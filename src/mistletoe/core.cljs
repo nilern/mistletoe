@@ -6,50 +6,33 @@
 
 ;;;; # Library
 
-;;;; ## Building VDOM
+;;;; ## Elements
 
-(deftype VDOMNode [^:mutable element dom ^:mutable children])
-
-(deftype VDOMTextNode [^:mutable element dom])
-
-(deftype VDOMComponentNode [^:mutable element ^:mutable dom ^:mutable child
-                            ^:mutable component-inst])
-
+(declare VDOMNode VDOMComponentNode VDOMTextNode)
+  
 (defprotocol Element
   (->VDOM [self])
   (update-dom-props! [self prev-props dom]))
-  
+
+(defprotocol Tag
+  (instantiate [self element]))
+    
 (defprotocol Render
   (render [self]))
 
-(defn public-instance [element]
-  ((aget element 0) (aget element 1)))
+(defn element-type [element] (aget element 0))
+
+(defn element-props [element] (aget element 1))
+
+(defn public-instance [element] ((element-type element) (element-props element)))
 
 (extend-protocol Element
   string
   (->VDOM [self] (VDOMTextNode. self (dom/createTextNode self)))
   (update-dom-props! [self _ dom] (set! (.-nodeValue dom) self))
-
+  
   array
-  (->VDOM [self]
-    (if (string? (aget self 0))
-      (let [dom (dom/createElement (aget self 0))]
-        (update-dom-props! self #js {} dom)
-
-        (let [child-count (count self)
-              inst-children (make-array (- child-count 2))]
-          (loop [i 2]
-            (when (< i child-count)
-              (let [inst-child (->VDOM (aget self i) )]
-                (aset inst-children (- i 2) inst-child)
-                (dom/appendChild dom (.-dom inst-child))
-                (recur (inc i)))))
-          (VDOMNode. self dom inst-children)))
-      (let [component-inst (public-instance self)
-            child-elem (render component-inst)
-            child-inst (->VDOM child-elem)]
-        (VDOMComponentNode. self (.-dom child-inst) child-inst component-inst))))
-        
+  (->VDOM [self] (instantiate (element-type self) self))
   (update-dom-props! [self prev-props dom]
     (obj/forEach (aget self 1)
                  (fn [v k _]
@@ -60,20 +43,58 @@
                                                  (ev/listen dom ev-name v))
                      :else (aset dom k v))))))
 
-;;;; ## Reconciliation
+(extend-protocol Tag
+  string
+  (instantiate [self element]
+    (let [dom (dom/createElement self)
+          _ (update-dom-props! element #js {} dom)
+          len (count element)
+          inst-children (make-array (- len 2))]
+      (loop [i 2]
+        (when (< i len)
+          (let [inst-child (->VDOM (aget element i))]
+            (aset inst-children (- i 2) inst-child)
+            (dom/appendChild dom (.-dom inst-child))
+            (recur (inc i)))))
+      (VDOMNode. element dom inst-children)))
+  
+  function
+  (instantiate [self element]
+    (let [component-inst (public-instance element)
+          child-elem (render component-inst)
+          child-inst (->VDOM child-elem)]
+      (VDOMComponentNode. element (.-dom child-inst) child-inst component-inst))))
 
-(declare reconcile)
+;;;; ## Virtual DOM and Reconciliation
 
-(defn reconcile-children [instance element]
-  (let [inst-children (.-children instance)
-        len (max (alength inst-children) (- (alength element) 2))
-        inst-children* (make-array len)]
-    (loop [i 0]
-      (when (< i len)
-        (some->> (reconcile (.-dom instance) (aget inst-children i) (aget element (+ i 2)))
-                 (aset inst-children* i))
-        (recur (inc i))))
-    inst-children*))
+(declare reconcile reconcile-children)
+
+(defprotocol VirtualDOMNode
+  (reconcile-subnodes! [self element* parent-dom]))
+
+(deftype VDOMNode [^:mutable element dom ^:mutable children]
+  VirtualDOMNode
+  (reconcile-subnodes! [self element* _]
+    (update-dom-props! element* (element-props element) dom)
+    (set! element element*)
+    (set! children (reconcile-children self element*))))
+
+(deftype VDOMTextNode [^:mutable element dom]
+  VirtualDOMNode
+  (reconcile-subnodes! [self element* _]
+    (update-dom-props! element* element dom)
+    (set! element element*)))
+
+(deftype VDOMComponentNode [^:mutable element ^:mutable dom ^:mutable child
+                            ^:mutable component-inst]
+  VirtualDOMNode
+  (reconcile-subnodes! [self element* parent-dom]
+    (let [component-inst* (public-instance element*)
+          child* (reconcile parent-dom child (render component-inst*))]
+      (set! element element*)
+      (set! dom (.-dom child*))
+      (set! child child*)
+      (set! component-inst component-inst*))))
 
 (defn reconcile [parent-dom instance element]
   (cond
@@ -84,25 +105,24 @@
     (not element) (do (dom/removeNode (.-dom instance))
                       nil)
 
-    (not= (aget (.-element instance) 0) (aget element 0))
+    (not= (element-type (.-element instance)) (element-type element))
     (let [instance* (->VDOM element)]
       (dom/replaceNode (.-dom instance*) (.-dom instance))
       instance*)
 
-    (string? (aget element 0))
-    (do (update-dom-props! element (aget (.-element instance) 1) (.-dom instance))
-        (set! (.-children instance) (reconcile-children instance element))
-        (set! (.-element instance) element)
-        instance)
-
-    :else (let [component-inst* (public-instance element)
-                child-elem (render component-inst*)
-                child-inst (reconcile parent-dom (.-child instance) child-elem)]
-            (set! (.-dom instance) (.-dom child-inst))
-            (set! (.-child instance) child-inst)
-            (set! (.-element instance) element)
-            (set! (.-component-inst instance) component-inst*)
-            instance)))
+    :else (do (reconcile-subnodes! instance element parent-dom)
+              instance)))
+              
+(defn reconcile-children [instance element]
+  (let [inst-children (.-children instance)
+        len (max (alength inst-children) (- (alength element) 2))
+        inst-children* (make-array len)]
+    (loop [i 0]
+      (when (< i len)
+        (some->> (reconcile (.-dom instance) (aget inst-children i) (aget element (+ i 2)))
+                 (aset inst-children* i))
+        (recur (inc i))))
+    inst-children*))
 
 ;;;; ## Mounting DOM
 
