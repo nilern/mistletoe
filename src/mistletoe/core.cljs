@@ -8,15 +8,22 @@
 
 ;;;; ## Building VDOM
 
-(deftype VDOMNode [element dom children])
+(deftype VDOMNode [^:mutable element dom ^:mutable children])
 
-(deftype VDOMTextNode [element dom])
+(deftype VDOMTextNode [^:mutable element dom])
+
+(deftype VDOMComponentNode [^:mutable element ^:mutable dom ^:mutable child
+                            ^:mutable component-inst])
 
 (defprotocol Element
   (->VDOM [self])
   (update-dom-props! [self prev-props dom]))
+  
+(defprotocol Render
+  (render [self]))
 
-(declare update-dom-props)
+(defn public-instance [element]
+  ((aget element 0) (aget element 1)))
 
 (extend-protocol Element
   string
@@ -25,18 +32,23 @@
 
   array
   (->VDOM [self]
-    (let [dom (dom/createElement (aget self 0))]
-      (update-dom-props! self #js {} dom)
+    (if (string? (aget self 0))
+      (let [dom (dom/createElement (aget self 0))]
+        (update-dom-props! self #js {} dom)
 
-      (let [child-count (count self)
-            inst-children (make-array (- child-count 2))]
-        (loop [i 2]
-          (when (< i child-count)
-            (let [inst-child (->VDOM (aget self i) )]
-              (aset inst-children (- i 2) inst-child)
-              (dom/appendChild dom (.-dom inst-child))
-              (recur (inc i)))))
-        (VDOMNode. self dom inst-children))))
+        (let [child-count (count self)
+              inst-children (make-array (- child-count 2))]
+          (loop [i 2]
+            (when (< i child-count)
+              (let [inst-child (->VDOM (aget self i) )]
+                (aset inst-children (- i 2) inst-child)
+                (dom/appendChild dom (.-dom inst-child))
+                (recur (inc i)))))
+          (VDOMNode. self dom inst-children)))
+      (let [component-inst (public-instance self)
+            child-elem (render component-inst)
+            child-inst (->VDOM child-elem)]
+        (VDOMComponentNode. self (.-dom child-inst) child-inst component-inst))))
         
   (update-dom-props! [self prev-props dom]
     (obj/forEach (aget self 1)
@@ -72,15 +84,25 @@
     (not element) (do (dom/removeNode (.-dom instance))
                       nil)
 
-    (= (aget (.-element instance) 0) (aget element 0))
+    (not= (aget (.-element instance) 0) (aget element 0))
+    (let [instance* (->VDOM element)]
+      (dom/replaceNode (.-dom instance*) (.-dom instance))
+      instance*)
+
+    (string? (aget element 0))
     (do (update-dom-props! element (aget (.-element instance) 1) (.-dom instance))
         (set! (.-children instance) (reconcile-children instance element))
         (set! (.-element instance) element)
         instance)
 
-    :else (let [instance* (->VDOM element)]
-            (dom/replaceNode (.-dom instance*) (.-dom instance))
-            instance*)))
+    :else (let [component-inst* (public-instance element)
+                child-elem (render component-inst*)
+                child-inst (reconcile parent-dom (.-child instance) child-elem)]
+            (set! (.-dom instance) (.-dom child-inst))
+            (set! (.-child instance) child-inst)
+            (set! (.-element instance) element)
+            (set! (.-component-inst instance) component-inst*)
+            instance)))
 
 ;;;; ## Mounting DOM
 
@@ -91,9 +113,13 @@
 
 ;;;; # Demo App
 
+(defn counter-view [props]
+  (reify Render
+    (render [_] #js ["div" #js {} (str (.-n props))])))
+
 (defn ui [state v]
   #js ["div" #js {}
-       #js ["div" #js {} (str v)]
+       #js [counter-view #js {"n" v}]
        #js ["input" #js {"type" "button"
                          "onclick" (fn [_] (swap! state inc))
                          "value" "lick!"}]])
