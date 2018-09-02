@@ -24,7 +24,7 @@
 
 (defn element-props [element] (aget element 1))
 
-(defn public-instance [element] ((element-type element) (element-props element)))
+(defn public-instance [element] ((element-type element) element))
 
 (extend-protocol Element
   string
@@ -133,13 +133,13 @@
 
 ;;;; # Demo App
 
-(defn counter-view [props]
+(defn counter-view [element]
   (reify Render
-    (render [_] #js ["div" #js {} (str (.-n props))])))
+    (render [_] #js ["div" #js {} (str (aget element 2))])))
 
 (defn ui [state v]
   #js ["div" #js {}
-       #js [counter-view #js {"n" v}]
+       #js [counter-view #js {} v]
        #js ["input" #js {"type" "button"
                          "onclick" (fn [_] (swap! state inc))
                          "value" "lick!"}]])
