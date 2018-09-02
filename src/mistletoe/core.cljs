@@ -37,6 +37,7 @@
     (obj/forEach (aget self 1)
                  (fn [v k _]
                    (cond
+                     (= k "style") (obj/forEach v (fn [v k _] (aset dom "style" k v)))
                      (str/starts-with? k "on") (let [ev-name (subs k 2)]
                                                  (when-let [prevv (aget prev-props k)]
                                                    (ev/unlisten dom ev-name prevv))
@@ -135,7 +136,7 @@
 
 (defn counter-view [element]
   (reify Render
-    (render [_] #js ["div" #js {} (str (aget element 2))])))
+    (render [_] #js ["div" #js {"style" #js {"color" "red"}} (str (aget element 2))])))
 
 (defn ui [state v]
   #js ["div" #js {}
