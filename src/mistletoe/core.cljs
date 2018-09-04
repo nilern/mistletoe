@@ -4,19 +4,21 @@
             [goog.dom :as dom]
             [goog.events :as ev]))
 
-;;;; # Library
+;;;; Library
+;;;; ===============================================================================================
 
-;;;; ## Elements
+;;;; Elements
+;;;; -----------------------------------------------------------------------------------------------
 
 (declare VDOMNode VDOMComponentNode VDOMTextNode)
-  
+
 (defprotocol Element
   (->VDOM [self parent])
   (update-dom-props! [self prev-props dom]))
 
 (defprotocol Tag
   (instantiate [self element parent]))
-    
+
 (defprotocol Render
   (render [self]))
 
@@ -30,7 +32,7 @@
   string
   (->VDOM [self parent] (VDOMTextNode. self (dom/createTextNode self) parent))
   (update-dom-props! [self _ dom] (set! (.-nodeValue dom) self))
-  
+
   array
   (->VDOM [self parent] (instantiate (element-type self) self parent))
   (update-dom-props! [self prev-props dom]
@@ -59,7 +61,7 @@
             (dom/appendChild dom (.-dom inst-child))
             (recur (inc i)))))
       instance))
-  
+
   function
   (instantiate [self element parent]
     (let [component-inst (public-instance element)
@@ -67,7 +69,8 @@
           child-inst (->VDOM child-elem parent)]
       (VDOMComponentNode. element (.-dom child-inst) parent child-inst component-inst))))
 
-;;;; ## Virtual DOM and Reconciliation
+;;;; Virtual DOM and Reconciliation
+;;;; -----------------------------------------------------------------------------------------------
 
 (declare reconcile reconcile-children)
 
@@ -114,7 +117,7 @@
 
     :else (do (reconcile-subnodes! instance element)
               instance)))
-              
+
 (defn reconcile-children [instance element]
   (let [inst-children (.-children instance)
         len (max (alength inst-children) (- (alength element) 2))
@@ -126,14 +129,106 @@
         (recur (inc i))))
     inst-children*))
 
-;;;; ## Mounting DOM
+;;;
+
+(defprotocol DOMDelta
+  (apply-delta! [self]))
+
+(deftype AppendChild [parent child]
+  DOMDelta
+  (apply-delta! [_] (.appendChild (.-dom parent) (.-dom child))))
+
+(deftype RemoveChild [parent child]
+  DOMDelta
+  (apply-delta! [_] (.removeChild (.-dom parent) (.-dom child))))
+
+(deftype ReplaceChild [parent new-child old-child]
+  DOMDelta
+  (apply-delta! [_] (.replaceChild (.-dom parent) (.-dom new-child) (.-dom old-child))))
+
+(deftype SetProperty [node property value]
+  DOMDelta
+  (apply-delta! [_] (aset (.-dom node) property value)))
+
+(deftype SetCSSProperty [node property value]
+  DOMDelta
+  (apply-delta! [_] (aset (.-dom node) "style" property value)))
+
+(deftype SetEventListener [node property prev-value value]
+  DOMDelta
+  (apply-delta! [_]
+    (when (and prev-value (not (undefined? prev-value)))
+      (ev/unlisten (.-dom node) property prev-value))
+    (ev/listen (.-dom node) property value)))
+
+(declare diff-subtrees!)
+
+;; TODO: Components
+(defn- diff! [deltas prev-vdom new-vdom]
+  (cond
+    (undefined? prev-vdom) (.push deltas (AppendChild. (.-parentNode prev-vdom) new-vdom))
+
+    (undefined? new-vdom) (.push deltas (RemoveChild. (.-parentNode prev-vdom) new-vdom))
+
+    (not= (.-nodeName prev-vdom) (.-nodeName new-vdom))
+    (.push deltas (ReplaceChild. (.-parentNode prev-vdom) new-vdom prev-vdom))
+
+    :else (diff-subtrees! deltas prev-vdom new-vdom)))
+
+(declare diff-attributes! diff-children!)
+
+(defn- diff-subtrees! [deltas prev-vdom new-vdom]
+  (diff-attributes! deltas prev-vdom new-vdom)
+  (diff-children! deltas prev-vdom new-vdom))
+
+(defn diff-attributes! [deltas prev-vdom new-vdom]
+  (obj/forEach new-vdom (fn [v k _]
+                          (case k
+                            ("parentNode" "childNodes" "nodeName")
+                            (assert false (str "setting " k " manually is forbidden"))
+
+                            "style" (obj/forEach v (fn [v k _] (.push deltas (SetCSSProperty. prev-vdom k v))))
+
+                            (if (str/starts-with? k "on")
+                              (.push deltas (SetEventListener. prev-vdom k (aget prev-vdom k) v))
+                              (.push deltas (SetProperty. prev-vdom k v)))))))
+
+(defn- diff-children! [deltas prev-vdom new-vdom]
+  (let [prev-children (.-childNodes prev-vdom)
+        new-children (.-childNodes new-vdom)
+        len (max (alength prev-children) (alength new-children))]
+    (loop [i 0]
+      (when (< i len)
+        (diff! deltas (aget prev-children i) (aget new-children i))
+        (recur (inc i))))))
+
+(defn- diff [prev-vdom new-vdom]
+  (let [deltas (array)]
+    (diff! deltas prev-vdom new-vdom)
+    deltas))
+
+(defn- commit-diff! [deltas]
+  (loop [i 0]
+    (when (< i (alength deltas))
+      (apply-delta! (aget deltas i)))))
+
+(defn element-node [tag props children]
+  (set! (.-nodeName props) tag)
+  (set! (.-childNodes props) children)
+  props)
+
+(defn text-node [text] #js {"nodeValue" text})
+
+;;;; Mounting DOM
+;;;; -----------------------------------------------------------------------------------------------
 
 (defn renderer [mount-point]
   (let [root-inst (atom nil)]
     (fn [element]
       (swap! root-inst #(reconcile #js {"dom" mount-point} % element)))))
 
-;;;; # Demo App
+;;;; Demo App
+;;;; ===============================================================================================
 
 (defn counter-view [element]
   (reify Render
@@ -142,9 +237,9 @@
 (defn ui [state v]
   #js ["div" #js {}
        #js [counter-view #js {} v]
-       #js ["input" #js {"type" "button"
+       #js ["input" #js {"type"    "button"
                          "onclick" (fn [_] (swap! state inc))
-                         "value" "lick!"}]])
+                         "value"   "lick!"}]])
 
 (defn render-app! [render! state v]
   (render! (ui state v)))
