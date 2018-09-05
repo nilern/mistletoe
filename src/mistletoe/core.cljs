@@ -131,6 +131,39 @@
 
 ;;;
 
+(defn- set-parents! [vdom]
+  (let [children (.-childNodes vdom)]
+    (when-not (undefined? children)
+      (dotimes [i (alength children)]
+        (let [child (aget children i)]
+          (set! (.-parent child) vdom)
+          (set-parents! child))))))
+
+(defn- materialize-node! [vdom]
+  (let [dom (if (= (.-nodeName vdom) "#text")
+              (.createTextNode js/document (.-nodeValue vdom))
+              (.createElement js/document (.-nodeName vdom)))]
+    (obj/forEach vdom (fn [v k _]
+                        (case k
+                          ("parentNode" "childNodes" "nodeName")
+                          (assert false (str "setting " k " manually is forbidden"))
+
+                          "style" (obj/forEach v (fn [v k _] (aset dom "style" k v)))
+
+                          (if (str/starts-with? k "on")
+                            (ev/listen dom (subs k 2) v)
+                            (aset dom k v)))))
+    (set! (.-dom vdom) dom)
+    dom))
+
+(defn materialize! [vdom]
+  (let [dom (materialize-node! vdom)]
+    (let [children (.-childNodes vdom)]
+      (when-not (undefined? children)
+        (dotimes [i (alength children)]
+          (let [child-dom (materialize-node! (aget children i))]
+            (.appendChild dom child-dom)))))))
+
 (defprotocol DOMDelta
   (apply-delta! [self]))
 
@@ -184,13 +217,12 @@
 (defn diff-attributes! [deltas prev-vdom new-vdom]
   (obj/forEach new-vdom (fn [v k _]
                           (case k
-                            ("parentNode" "childNodes" "nodeName")
-                            (assert false (str "setting " k " manually is forbidden"))
+                            ("parentNode" "childNodes" "nodeName") nil
 
                             "style" (obj/forEach v (fn [v k _] (.push deltas (SetCSSProperty. prev-vdom k v))))
 
                             (if (str/starts-with? k "on")
-                              (.push deltas (SetEventListener. prev-vdom k (aget prev-vdom k) v))
+                              (.push deltas (SetEventListener. prev-vdom (subs k 2) (aget prev-vdom k) v))
                               (.push deltas (SetProperty. prev-vdom k v)))))))
 
 (defn- diff-children! [deltas prev-vdom new-vdom]
