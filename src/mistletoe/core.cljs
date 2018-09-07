@@ -94,17 +94,21 @@
   (diff-attributes! deltas prev-vdom new-vdom)
   (diff-children! deltas prev-vdom new-vdom))
 
-;; OPTIMIZE: Don't emit deltas when value has not changed
 (defn diff-attributes! [deltas prev-vdom new-vdom]
   (obj/forEach new-vdom (fn [v k _]
                           (case k
                             ("dom" "parentNode" "childNodes" "nodeName") nil
 
-                            "style" (obj/forEach v (fn [v k _] (.push deltas (SetCSSProperty. prev-vdom k v))))
+                            "style"
+                            (obj/forEach v (fn [v k _]
+                                             (when-not (= v (aget (.-style prev-vdom) k))
+                                               (.push deltas (SetCSSProperty. prev-vdom k v)))))
 
-                            (if (str/starts-with? k "on")
-                              (.push deltas (SetEventListener. prev-vdom (subs k 2) (aget prev-vdom k) v))
-                              (.push deltas (SetProperty. prev-vdom k v)))))))
+                            (when-not (= v (aget prev-vdom k))
+                              (if (str/starts-with? k "on")
+                                (.push deltas (SetEventListener. prev-vdom (subs k 2)
+                                                                 (aget prev-vdom k) v))         
+                                (.push deltas (SetProperty. prev-vdom k v))))))))
 
 (defn- diff-children! [deltas prev-vdom new-vdom]
   (when-not (= (.-nodeName prev-vdom) "#text")
@@ -140,24 +144,27 @@
 (defn counter-view [v]
   (element-node "DIV" #js {"style" #js {"color" "red"}} #js [(text-node (str v))]))
 
-(defn ui [state v]
+(defn ui [state v click-handler]
   (element-node "DIV" #js {} #js [(counter-view v)
                                   (element-node "INPUT"
                                                 #js {"type"    "button"
-                                                     "onclick" (fn [_] (swap! state inc))
+                                                     "onclick" click-handler
                                                      "value"   "Click me."}
                                                 #js [])]))
 
 (defn main []
   (let [state (atom 0)
-        vdom-root (atom (doto (ui state @state)
+        on-click (fn [_] (swap! state inc))
+        vdom-root (atom (doto (ui state @state on-click)
                           (set-parents!)
                           (materialize!)))]
     (add-watch state nil (fn [_ state _ v]
-                           (let [vdom (ui state v)]
+                           (let [vdom (ui state v on-click)]
                              (set-parents! vdom)
-                             (commit-diff! (diff @vdom-root vdom))
-                             (reset! vdom-root vdom))))
+                             (let [deltas (diff @vdom-root vdom)]
+                               (println deltas)
+                               (commit-diff! deltas)
+                               (reset! vdom-root vdom)))))
     (.appendChild (.getElementById js/document "app-root") (.-dom @vdom-root))))
 
 (main)
