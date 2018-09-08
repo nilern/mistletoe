@@ -103,7 +103,7 @@
 
     (string? (.-nodeName prev-vdom)) (do (set! (.-dom new-vdom) (.-dom prev-vdom))
                                          (diff-subtrees! deltas (.-dom prev-vdom) prev-vdom new-vdom)
-                                         prev-vdom)
+                                         new-vdom)
 
     :else (let [element (.-childNode prev-vdom)
                 element* (render (.-component prev-vdom) new-vdom)]
@@ -168,28 +168,33 @@
 ;;;; Demo App
 ;;;; ===============================================================================================
 
-(defn counter-view [vdom]
-  (reify Render
-    (render [_ vdom]
-      (el :div :style {:color "red"} (text-node (str (.-v vdom)))))))
-
-(defn ui [state v click-handler]
+(defn ui [state {:keys [todos]}]
   (el :div
-    (el counter-view :v v)
-    (el :input :type    "button"
-               :onclick click-handler
-               :value   "Click me.")))
+    (el :ul (for [[_ todo] todos]
+              (el :li (text-node todo))))
+    (el :form (el :input :type "text"
+                         :id "new-todo-text")
+              (el :input :type "button"
+                  :style {:margin-left "8px"}
+                  :value "+"
+                  :onclick (fn [_]
+                             (let [todo-text (.. js/document (getElementById "new-todo-text")
+                                                             -value)]
+                               (swap! state (fn [{:keys [counter] :as v}]
+                                              (-> v
+                                                  (update :counter inc)
+                                                  (update :todos assoc counter todo-text))))))))))
 
 (defn main []
-  (let [state (atom 0)
-        on-click (fn [_] (swap! state inc))
-        vdom-root (atom (doto (ui state @state on-click)
+  (let [state (atom {:counter 0, :todos {}})
+        vdom-root (atom (doto (ui state @state)
                           (materialize! nil)
                           (set-parents!)))
         container (.getElementById js/document "app-root")
         _ (.appendChild container (.-dom @vdom-root))]
     (add-watch state nil (fn [_ state _ v]
-                           (let [vdom (ui state v on-click)]
+                           (println v)
+                           (let [vdom (ui state v)]
                              (set-parents! vdom)
                              (let [deltas (array)
                                    vdom (diff! deltas container @vdom-root vdom)]
