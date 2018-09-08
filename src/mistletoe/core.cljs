@@ -148,10 +148,16 @@
 ;;;; Element Factories
 ;;;; -----------------------------------------------------------------------------------------------
 
-(defn element-node [tag props children]
-  (set! (.-nodeName props) tag)
-  (set! (.-childNodes props) children)
-  props)
+(defn el [tag & args]
+  (let [props #js {"nodeName" (if (keyword? tag) (name tag) tag)}]
+    (loop [[k v & args* :as args] args]
+      (if (and (seq args) (keyword? k))
+        (do (if (= k :style)
+              (set! (.-style props) (clj->js v))
+              (aset props (name k) v))
+            (recur args*))
+        (do (set! (.-childNodes props) (into-array (flatten args)))
+            props)))))
 
 (defn text-node [text]
   #js {"nodeName"  "#text"
@@ -163,16 +169,14 @@
 (defn counter-view [vdom]
   (reify Render
     (render [_ vdom]
-      (element-node "DIV" #js {"style" #js {"color" "red"}}
-                          #js [(text-node (str (.-v vdom)))]))))
+      (el :div :style {:color "red"} (text-node (str (.-v vdom)))))))
 
 (defn ui [state v click-handler]
-  (element-node "DIV" #js {} #js [(element-node counter-view #js {:v v} #js [])
-                                  (element-node "INPUT"
-                                                #js {"type"    "button"
-                                                     "onclick" click-handler
-                                                     "value"   "Click me."}
-                                                #js [])]))
+  (el :div
+    (el counter-view :v v)
+    (el :input :type    "button"
+               :onclick click-handler
+               :value   "Click me.")))
 
 (defn main []
   (let [state (atom 0)
@@ -187,7 +191,7 @@
                              (let [deltas (array)
                                    vdom (diff! deltas container @vdom-root vdom)]
                                (set-parents! vdom)
-                               (.log js/console deltas)
+                               (println deltas)
                                (commit-diff! deltas)
                                (reset! vdom-root vdom)))))))
 
