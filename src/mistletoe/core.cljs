@@ -59,49 +59,50 @@
 
 (deftype AppendChild [parent-dom child]
   DOMDelta
-  (apply-delta! [_] (.appendChild parent-dom (.-dom child))))
+  (apply-delta! [_] (.appendChild parent-dom child)))
 
 (deftype RemoveChild [parent-dom child]
   DOMDelta
-  (apply-delta! [_] (.removeChild parent-dom (.-dom child))))
+  (apply-delta! [_] (.removeChild parent-dom child)))
 
 (deftype ReplaceChild [parent-dom new-child old-child]
   DOMDelta
-  (apply-delta! [_] (.replaceChild parent-dom (.-dom new-child) (.-dom old-child))))
+  (apply-delta! [_] (.replaceChild parent-dom new-child old-child)))
 
 (deftype SetProperty [node property value]
   DOMDelta
-  (apply-delta! [_] (aset (.-dom node) property value)))
+  (apply-delta! [_] (aset node property value)))
 
 (deftype SetCSSProperty [node property value]
   DOMDelta
-  (apply-delta! [_] (aset (.-dom node) "style" property value)))
+  (apply-delta! [_] (aset node "style" property value)))
 
 (deftype SetEventListener [node property prev-value value]
   DOMDelta
   (apply-delta! [_]
     (when (and prev-value (not (undefined? prev-value)))
-      (ev/unlisten (.-dom node) property prev-value))
-    (ev/listen (.-dom node) property value)))
+      (ev/unlisten node property prev-value))
+    (ev/listen node property value)))
 
 (declare diff-subtrees!)
 
 (defn- diff! [deltas parent-dom prev-vdom new-vdom]
   (cond
     (undefined? prev-vdom) (do (materialize! new-vdom parent-dom)
-                               (.push deltas (AppendChild. parent-dom new-vdom))
+                               (.push deltas (AppendChild. parent-dom (.-dom new-vdom)))
                                new-vdom)
 
-    (undefined? new-vdom) (do (.push deltas (RemoveChild. parent-dom prev-vdom))
+    (undefined? new-vdom) (do (.push deltas (RemoveChild. parent-dom (.-dom prev-vdom)))
                               nil)
 
     (not= (.-nodeName prev-vdom) (.-nodeName new-vdom))
     (do (materialize! new-vdom parent-dom)
-        (.push deltas (ReplaceChild. parent-dom new-vdom prev-vdom))
+        (.push deltas (ReplaceChild. parent-dom (.-dom new-vdom) (.-dom prev-vdom)))
         new-vdom)
 
     (string? (.-nodeName prev-vdom)) (do (set! (.-dom new-vdom) (.-dom prev-vdom))
-                                         (diff-subtrees! deltas (.-dom prev-vdom) prev-vdom new-vdom)
+                                         (diff-subtrees! deltas (.-dom prev-vdom) prev-vdom
+                                                         new-vdom)
                                          new-vdom)
 
     :else (let [element (.-childNode prev-vdom)
@@ -125,13 +126,14 @@
                             "style"
                             (obj/forEach v (fn [v k _]
                                              (when-not (= v (aget (.-style prev-vdom) k))
-                                               (.push deltas (SetCSSProperty. prev-vdom k v)))))
+                                               (.push deltas
+                                                      (SetCSSProperty. (.-dom prev-vdom) k v)))))
 
                             (when-not (= v (aget prev-vdom k))
                               (if (str/starts-with? k "on")
-                                (.push deltas (SetEventListener. prev-vdom (subs k 2)
+                                (.push deltas (SetEventListener. (.-dom prev-vdom) (subs k 2)
                                                                  (aget prev-vdom k) v))         
-                                (.push deltas (SetProperty. prev-vdom k v))))))))
+                                (.push deltas (SetProperty. (.-dom prev-vdom) k v))))))))
 
 (defn- diff-children! [deltas dom prev-vdom new-vdom]
   (if (string? (.-nodeName prev-vdom))
