@@ -92,8 +92,7 @@
                                (.push deltas (AppendChild. parent-dom new-vdom))
                                new-vdom)
 
-    (undefined? new-vdom) (do (set! (.-dom new-vdom) (.-dom prev-vdom))
-                              (.push deltas (RemoveChild. parent-dom new-vdom))
+    (undefined? new-vdom) (do (.push deltas (RemoveChild. parent-dom prev-vdom))
                               nil)
 
     (not= (.-nodeName prev-vdom) (.-nodeName new-vdom))
@@ -170,8 +169,12 @@
 
 (defn ui [state {:keys [todos]}]
   (el :div
-    (el :ul (for [[_ todo] todos]
-              (el :li (text-node todo))))
+    (el :ul (for [[i todo] todos]
+              (el :li (text-node todo)
+                      (el :input :type "button"
+                          :style {:margin-left "8px"}
+                          :value "x"
+                          :onclick (fn [_] (swap! state update :todos dissoc i))))))
     (el :form (el :input :type "text"
                          :id "new-todo-text")
               (el :input :type "button"
@@ -193,7 +196,6 @@
         container (.getElementById js/document "app-root")
         _ (.appendChild container (.-dom @vdom-root))]
     (add-watch state nil (fn [_ state _ v]
-                           (println v)
                            (let [vdom (ui state v)]
                              (set-parents! vdom)
                              (let [deltas (array)
