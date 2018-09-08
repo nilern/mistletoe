@@ -50,8 +50,9 @@
             (set! (.-parentNode child) vdom)
             (set-parents! child)))))
     (let [child (.-childNode vdom)]
-      (set! (.-parentNode child) vdom)
-      (set-parents! child))))
+      (when-not (undefined? child)
+        (set! (.-parentNode child) vdom)
+        (set-parents! child)))))
 
 (defprotocol DOMDelta
   (apply-delta! [self]))
@@ -107,6 +108,7 @@
     :else (let [element (.-childNode prev-vdom)
                 element* (render (.-component prev-vdom) new-vdom)]
             (set! (.-childNode prev-vdom) element*)
+            (set-parents! prev-vdom)
             (diff! deltas parent-dom element element*)
             prev-vdom)))
 
@@ -188,9 +190,9 @@
         _ (.appendChild container (.-dom @vdom-root))]
     (add-watch state nil (fn [_ state _ v]
                            (let [vdom (ui state v on-click)]
+                             (set-parents! vdom)
                              (let [deltas (array)
                                    vdom (diff! deltas container @vdom-root vdom)]
-                               (set-parents! vdom)
                                (println deltas)
                                (commit-diff! deltas)
                                (reset! vdom-root vdom)))))))
