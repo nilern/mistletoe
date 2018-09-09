@@ -205,5 +205,3 @@
                                (println deltas)
                                (commit-diff! deltas)
                                (reset! vdom-root vdom)))))))
-
-(main)
