@@ -41,7 +41,7 @@
         (set! (.-childNode vdom) child)
         (materialize! child parent-dom)))))
 
-(defn- set-parents! [vdom]
+(defn set-parents! [vdom]
   (if (string? (.-nodeName vdom))
     (let [children (.-childNodes vdom)]
       (when-not (undefined? children)
@@ -86,7 +86,7 @@
 
 (declare diff-subtrees!)
 
-(defn- diff! [deltas parent-dom prev-vdom new-vdom]
+(defn diff! [deltas parent-dom prev-vdom new-vdom]
   (cond
     (undefined? prev-vdom) (do (materialize! new-vdom parent-dom)
                                (.push deltas (AppendChild. parent-dom (.-dom new-vdom)))
@@ -144,7 +144,7 @@
           (diff! deltas dom (aget prev-children i) (aget new-children i)))))
     (diff! deltas dom (.-childNode prev-vdom) (.-childNode new-vdom))))
 
-(defn- commit-diff! [deltas]
+(defn commit-diff! [deltas]
   (dotimes [i (alength deltas)]
     (apply-delta! (aget deltas i))))
 
