@@ -7,7 +7,8 @@
 
 (defn- set-property! [dom property value] (aset dom property value))
 
-(defn- set-style-property! [dom property value] (aset (.-style dom) property value))
+(defn- set-style-property! [dom property value]
+  (aset (.-style dom) property (if (number? value) (str value "px") value)))
 
 (defn- set-event-handler! [dom property value prev-value]
   (when (and (some? prev-value) (not (undefined? prev-value)))
@@ -29,7 +30,7 @@
   (-deref-prop [self _ _] self))
 
 (defn deref-prop [v vnode]
-  (if-some [v (-deref-prop v vnode #{})]
+  (if-some [v (-deref-prop v vnode (js/Set.))]
     v
     (throw (ex-info "unresolvable phloem" {:at v}))))
 
@@ -208,12 +209,14 @@
 
                             "style"
                             (obj/forEach v (fn [v k _]
-                                             (schedule-set-style-property! v k new-vdom deltas)))
+                                             (when (not= v (aget (.-style prev-vdom) k))
+                                               (schedule-set-style-property! v k new-vdom deltas))))
 
-                            (if (str/starts-with? k "on")
-                              (schedule-set-event-handler! v (subs k 2) new-vdom deltas
-                                                           (aget prev-vdom k))
-                              (schedule-set-property! v k new-vdom deltas))))))
+                            (when (not= v (aget prev-vdom k))
+                              (if (str/starts-with? k "on")
+                                (schedule-set-event-handler! v (subs k 2) new-vdom deltas
+                                                             (aget prev-vdom k))
+                                (schedule-set-property! v k new-vdom deltas)))))))
 
 ;; OPTIMIZE: Use keys to make reordering children efficient:
 (defn- diff-children! [deltas dom prev-vdom new-vdom]

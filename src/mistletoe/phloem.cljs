@@ -2,17 +2,17 @@
   (:require [mistletoe.diff :refer [PropertyValue DerefProperty -deref-prop
                                     SetProperty SetCSSProperty SetEventListener]]))
 
-(deftype SelfPhloem [^:mutable cached f]
+(deftype Phloem [^:mutable cached deref-prop]
   DerefProperty
   (-deref-prop [self vnode visited]
-    (if (contains? visited self)
+    (if (.has visited self)
       (throw (ex-info "phloem cycle detected" {:at self}))
       (if (some? cached)
         cached
-        (let [v (-deref-prop (f vnode) vnode (conj visited self))]
-          (when (some? v)
-            (set! cached v))
-          v))))
+        (do (.add visited self)
+            (when-some [v (deref-prop self vnode visited)]
+              (set! cached v)
+              v)))))
 
 
   PropertyValue
@@ -27,4 +27,14 @@
   (schedule-set-event-handler! [self name vnode deltas prev]
     (.push deltas (SetEventListener. vnode name prev self))))
 
-(defn self-phloem [f] (SelfPhloem. nil f))
+(defn $ [query]
+  (Phloem. nil (fn [_ vnode _]
+                 (case query
+                   :parent (let [res (.-parentNode vnode)]
+                             (when (and (some? res) (not (undefined? res)))
+                               res))
+                   (throw (ex-info "invalid query" {:query query}))))))
+
+(defn phmap [f phloem]
+  (Phloem. nil (fn [_ vnode visited]
+                 (some-> (-deref-prop phloem vnode visited) f))))
