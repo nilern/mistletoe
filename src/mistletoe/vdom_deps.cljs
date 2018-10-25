@@ -1,12 +1,12 @@
-(ns mistletoe.phloem
+(ns mistletoe.vdom-deps
   (:require [mistletoe.diff :refer [PropertyValue DerefProperty -deref-prop
                                     SetProperty SetCSSProperty SetEventListener]]))
 
-(deftype Phloem [^:mutable cached deref-prop]
+(deftype VDOMDependency [^:mutable cached deref-prop]
   DerefProperty
   (-deref-prop [self vnode visited]
     (if (.has visited self)
-      (throw (ex-info "phloem cycle detected" {:at self}))
+      (throw (ex-info "VDOM dependency cycle detected" {:at self}))
       (if (some? cached)
         cached
         (do (.add visited self)
@@ -28,13 +28,13 @@
     (.push deltas (SetEventListener. vnode name prev self))))
 
 (defn $ [query]
-  (Phloem. nil (fn [_ vnode _]
-                 (case query
-                   :parent (let [res (.-parentNode vnode)]
-                             (when (and (some? res) (not (undefined? res)))
-                               res))
-                   (throw (ex-info "invalid query" {:query query}))))))
+  (VDOMDependency. nil (fn [_ vnode _]
+                         (case query
+                           :parent (let [res (.-parentNode vnode)]
+                                     (when (and (some? res) (not (undefined? res)))
+                                       res))
+                           (throw (ex-info "invalid query" {:query query}))))))
 
-(defn phmap [f phloem]
-  (Phloem. nil (fn [_ vnode visited]
-                 (some-> (-deref-prop phloem vnode visited) f))))
+(defn map-dep [f dep]
+  (VDOMDependency. nil (fn [_ vnode visited]
+                         (some-> (-deref-prop dep vnode visited) f))))

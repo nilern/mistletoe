@@ -32,7 +32,7 @@
 (defn deref-prop [v vnode]
   (if-some [v (-deref-prop v vnode (js/Set.))]
     v
-    (throw (ex-info "unresolvable phloem" {:at v}))))
+    (throw (ex-info "unresolvable VDOM dependency" {:at v}))))
 
 ;;;;
 
@@ -115,7 +115,7 @@
 
 ;;;;
 
-;; OPTIMIZE: If phloem can be resolved, use the resolved value immediately:
+;; OPTIMIZE: If dependency can be resolved, use the resolved value immediately:
 (defn- materialize-element! [vdom parent-dom deltas]
   (let [dom (if (= (.-nodeName vdom) "#text")
               (.createTextNode js/document (.-nodeValue vdom))
@@ -168,7 +168,7 @@
 
 (declare diff-subtrees!)
 
-;; OPTIMIZE: If phloem can be resolved, use the resolved value immediately:
+;; OPTIMIZE: If dependency can be resolved, use the resolved value immediately:
 (defn diff! [deltas parent-dom prev-vdom new-vdom]
   (cond
     (undefined? prev-vdom) (do (materialize! new-vdom parent-dom deltas)
@@ -201,7 +201,7 @@
   (diff-attributes! deltas prev-vdom new-vdom)
   (diff-children! deltas dom prev-vdom new-vdom))
 
-;; OPTIMIZE: If phloem can be resolved, use the resolved value immediately:
+;; OPTIMIZE: If dependency can be resolved, use the resolved value immediately:
 (defn- diff-attributes! [deltas prev-vdom new-vdom]
   (obj/forEach new-vdom (fn [v k _]
                           (case k

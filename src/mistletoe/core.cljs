@@ -1,7 +1,7 @@
 (ns mistletoe.core
   (:require [mistletoe.diff :refer [materialize! set-parents! diff! apply-diff!]]
             [mistletoe.dom :refer [el text-node]]
-            [mistletoe.phloem :refer [$ phmap]]
+            [mistletoe.vdom-deps :refer [$ map-dep]]
 
             [goog.events :as ev]))
 
@@ -34,10 +34,10 @@
                   :left      0
                   :top       0
                   :width     500
-                  :transform (phmap (fn [parent]
-                                      (str "translate(" (/ (- (.. parent -style -width) 500) 2) "px, "
-                                           50 "px)"))
-                                    ($ :parent))}
+                  :transform (map-dep (fn [parent]
+                                        (str "translate(" (/ (- (.. parent -style -width) 500) 2) "px, "
+                                             50 "px)"))
+                                      ($ :parent))}
           (el :ul (for [[i todo] todos]
                     (el :li (text-node todo)
                         (el :input :type "button"
