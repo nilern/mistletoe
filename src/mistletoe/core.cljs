@@ -1,6 +1,6 @@
 (ns mistletoe.core
   (:require [mistletoe.node :as node :refer [el text-node]]
-            [mistletoe.dependency :refer [$ map-dep]]
+            [mistletoe.vdom-deps :refer [$ map-dep]]
             [mistletoe.diff :refer [diff! apply-diff!]]
             [goog.events :as ev]))
 
@@ -43,8 +43,7 @@
                             :style {:margin-left "8px"}
                             :value "x"
                             :onclick (fn [_] (swap! state update :todos dissoc i))))))
-          (el :form (el :input :type "text"
-                        :id "new-todo-text")
+          (el :form (el :input :type "text" :id "new-todo-text")
               (el :input :type "button"
                   :style {:margin-left "8px"}
                   :value "+"
