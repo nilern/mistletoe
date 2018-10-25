@@ -29,14 +29,10 @@
               :width    (:width window)
               :height   (:height window)}
       (el :div
-          :style {:position  "absolute"
-                  :left      0
-                  :top       0
-                  :width     500
-                  :transform (map-dep (fn [parent]
-                                        (str "translate(" (/ (- (.. parent -style -width) 500) 2) "px, "
-                                             50 "px)"))
-                                      ($ :parent))}
+          :style {:position "absolute"
+                  :left     (map-dep #(-> % .-style .-width (- 500) (/ 2)) ($ :parent))
+                  :top      50
+                  :width    500}
           (el :ul (for [[i todo] todos]
                     (el :li (text-node todo)
                         (el :input :type "button"
