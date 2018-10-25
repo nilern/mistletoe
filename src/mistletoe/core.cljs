@@ -1,19 +1,18 @@
 (ns mistletoe.core
-  (:require [mistletoe.diff :refer [materialize! set-parents! diff! apply-diff!]]
-            [mistletoe.dom :refer [el text-node]]
-            [mistletoe.vdom-deps :refer [$ map-dep]]
-
+  (:require [mistletoe.node :as node :refer [el text-node]]
+            [mistletoe.dependency :refer [$ map-dep]]
+            [mistletoe.diff :refer [diff! apply-diff!]]
             [goog.events :as ev]))
 
 (defn process-initial-vdom! [vdom]
   (let [diff (array)]
-    (materialize! vdom diff)
-    (set-parents! vdom)
+    (node/materialize! vdom diff)
+    (node/set-parents! vdom)
     (apply-diff! diff)
     vdom))
 
 (defn process-vdom-changes! [dom-container vdom vdom*]
-  (set-parents! vdom*)
+  (node/set-parents! vdom*)
   (let [diff (array)]
     (diff! diff dom-container vdom vdom*)
     (.log js/console diff)

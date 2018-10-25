@@ -1,10 +1,30 @@
-(ns mistletoe.vdom-deps
-  (:require [mistletoe.diff :refer [PropertyValue DerefProperty -deref-prop
-                                    SetProperty SetCSSProperty SetEventListener]]))
+(ns mistletoe.dependency
+  (:refer-clojure :exclude [resolve])
+  (:require [mistletoe.updates :refer [PropertyValue request-init-property!
+                                       request-init-style-property! request-init-event-handler!
+                                       schedule-set-property! schedule-set-style-property!
+                                       schedule-set-event-handler!
+                                       SetProperty SetCSSProperty SetEventListener]]))
+
+;;;; # Dependency Resolution
+
+(defprotocol Dependency
+  (-resolve [self vnode visited]))
+
+(extend-protocol Dependency
+  default
+  (-resolve [self _ _] self))
+
+(defn resolve [v vnode]
+  (if-some [v (-resolve v vnode (js/Set.))]
+    v
+    (throw (ex-info "unresolvable VDOM dependency" {:at v}))))
+
+;;;; # Dependencies on Other VDOM Nodes
 
 (deftype VDOMDependency [^:mutable cached deref-prop]
-  DerefProperty
-  (-deref-prop [self vnode visited]
+  Dependency
+  (-resolve [self vnode visited]
     (if (.has visited self)
       (throw (ex-info "VDOM dependency cycle detected" {:at self}))
       (if (some? cached)
@@ -35,6 +55,6 @@
                                        res))
                            (throw (ex-info "invalid query" {:query query}))))))
 
-(defn map-dep [f dep]
+(defn map-dep [f phloem]
   (VDOMDependency. nil (fn [_ vnode visited]
-                         (some-> (-deref-prop dep vnode visited) f))))
+                         (some-> (-resolve phloem vnode visited) f))))

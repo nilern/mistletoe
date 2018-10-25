@@ -1,18 +1,12 @@
-(ns mistletoe.dom)
+(ns mistletoe.dom
+  (:require [goog.events :as ev]))
 
-(defn el [tag & args]
-  (let [props #js {"nodeName" (if (keyword? tag) (name tag) tag)}]
-    (loop [[k v & args* :as args] args]
-      (if (and (seq args) (keyword? k))
-        (do (if (= k :style)
-              (set! (.-style props) (clj->js v))
-              (aset props (name k) v))
-            (recur args*))
-        (do (set! (.-childNodes props) (into-array (flatten args)))
-            props)))))
+(defn- set-property! [dom property value] (aset dom property value))
 
-;; TODO: Make this unnecessary:
-(defn text-node [text]
-  #js {"nodeName"  "#text"
-       "nodeValue" text})
+(defn- set-style-property! [dom property value]
+  (aset (.-style dom) property (if (number? value) (str value "px") value)))
 
+(defn- set-event-handler! [dom property value prev-value]
+  (when (and (some? prev-value) (not (undefined? prev-value)))
+    (ev/unlisten dom property prev-value))
+  (ev/listen dom property value))
