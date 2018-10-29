@@ -2,7 +2,8 @@
   (:require [mistletoe.node :as node :refer [el text-node]]
             [mistletoe.vdom-deps :refer [$ map-dep]]
             [mistletoe.diff :refer [diff! apply-diff!]]
-            [goog.events :as ev]))
+            [goog.events :as ev]
+            [clojure.string :as str]))
 
 (defn process-initial-vdom! [vdom]
   (let [diff (array)]
@@ -34,12 +35,14 @@
                   :top      50
                   :width    500}
           (el :ul (for [[i todo] todos]
-                    (el :li (text-node todo)
+                    (el :li
+                        (interleave (map text-node (str/split-lines todo))
+                                    (repeatedly #(el :br))) ; FIXME: Make nodes immutable so we can just `interpose`.
                         (el :input :type "button"
                             :style {:margin-left "8px"}
                             :value "x"
                             :onclick (fn [_] (swap! state update :todos dissoc i))))))
-          (el :form (el :input :type "text" :id "new-todo-text")
+          (el :form (el :textarea :id "new-todo-text")
               (el :input :type "button"
                   :style {:margin-left "8px"}
                   :value "+"
