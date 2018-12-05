@@ -8,6 +8,9 @@ FIXME
 
 ## TODO
 
+- [ ] Hiccup notation
+- [ ] Component destructors
+- [ ] setState equivalent
 - [ ] Layout properties with backtracking dependency resolution support for default values that depend on the other
       layout properties in the same dimension (horizontal/vertical).
 - [ ] Falling back to DOM measurements when there is insufficient information (e.g. only 0-1 of the x/y layout props are
