@@ -94,6 +94,6 @@
 
 (defn smap
   "A derived signal; its value is always equal to `(apply f (map deref signals))`.
-  Will only keep watches in `signals` if has watches itself."
+  Will only keep watches in `signals` if has watches itself so an impure `f` is not recommended."
   [f & signals]
   (DerivedSignal. f signals #_OPTIMIZE (apply f (map deref signals)) {}))
