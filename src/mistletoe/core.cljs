@@ -8,7 +8,8 @@
       (el :ul
           :style {:list-style-type "lower-greek"}
           (for [name ["Pine" "Birch" "Spruce"]]
-            (el :li name)))))
+            (el :li :onclick (fn [_] (.log js/console name))
+                name)))))
 
 (defn main []
   (.. js/document

@@ -15,7 +15,7 @@
   (-init-style-attr! [self name element]))
 
 (defmulti init-attr! (fn [_element k _v]
-                       (if (s/starts-with? "on" k)
+                       (if (s/starts-with? k "on")
                          :event
                          k)))
 
