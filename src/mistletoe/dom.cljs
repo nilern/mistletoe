@@ -50,9 +50,9 @@
               (let [[arg* & args] args]
                 (init-attr! el (name arg) arg*)
                 (recur args)))
-            (do (if (seqable? arg)
+            (do (if (or (string? arg) (not (seqable? arg)))
+                  (init-child! el arg)
                   (doseq [arg arg]
-                    (init-child! el arg))
-                  (init-child! el arg))
+                    (init-child! el arg)))
                 (recur args))))))
     el))
