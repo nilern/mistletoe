@@ -1,5 +1,6 @@
 (ns mistletoe.dom
-  (:require [goog.object :as obj]))
+  (:require [clojure.string :as s]
+            [goog.object :as obj]))
 
 ;;;;
 
@@ -13,7 +14,10 @@
   (-init-attr! [self name element])
   (-init-style-attr! [self name element]))
 
-(defmulti init-attr! (fn [_element k _v] k))
+(defmulti init-attr! (fn [_element k _v]
+                       (if (s/starts-with? "on" k)
+                         :event
+                         k)))
 
 ;;;;
 
@@ -32,6 +36,9 @@
 
 (defmethod init-attr! :default [element k v]
   (-init-attr! v k element))
+
+(defmethod init-attr! :event [element k f]
+  (.addEventListener element (subs k 2) f))
 
 (defmethod init-attr! "style" [element _ style-attrs]
   (doseq [[k v] style-attrs]
