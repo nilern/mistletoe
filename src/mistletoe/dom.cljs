@@ -23,9 +23,27 @@
 
 ;;;;
 
+(defn- -init-signal-child! [sgn parent]
+  (let [v @sgn]
+    (if (instance? js/Element v)
+      (throw (js/Error. "unimplemented"))
+      (let [child (.createTextNode js/document (str v))]
+        (.appendChild parent child)
+        (add-watch sgn (alloc-watch-key)
+                   (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))))))
+
 (extend-protocol Child
   js/Element
   (-init-child! [child parent] (.appendChild parent child))
+
+  sgn/SourceSignal
+  (-init-child! [child parent] (-init-signal-child! child parent))
+
+  sgn/ConstantSignal
+  (-init-child! [child parent] (-init-signal-child! child parent))
+
+  sgn/DerivedSignal
+  (-init-child! [child parent] (-init-signal-child! child parent))
 
   default
   (-init-child! [child parent]
