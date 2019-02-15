@@ -1,6 +1,8 @@
 (ns mistletoe.dom
   (:require [clojure.string :as s]
-            [goog.object :as obj]))
+            [goog.object :as obj]
+            [mistletoe.signal :as sgn]
+            [mistletoe.signal.util :refer [alloc-watch-key]]))
 
 ;;;;
 
@@ -29,10 +31,32 @@
   (-init-child! [child parent]
     (.appendChild parent (.createTextNode js/document (str child)))))
 
+(defn- -init-signal-attr! [sgn k element]
+  (.setAttribute element k @sgn)
+  (let [wk (alloc-watch-key)]
+    (add-watch sgn wk (fn [_ _ _ v] (.setAttribute element k v)))))
+
+(defn- -init-signal-style-attr! [sgn k element]
+  (obj/set (.-style element) k @sgn)
+  (let [wk (alloc-watch-key)]
+    (add-watch sgn wk (fn [_ _ _ v] (obj/set (.-style element) k v)))))
+
 (extend-protocol AttributeValue
   default
   (-init-attr! [v k element] (.setAttribute element k v))
-  (-init-style-attr! [v k element] (obj/set (.-style element) k v)))
+  (-init-style-attr! [v k element] (obj/set (.-style element) k v))
+
+  sgn/SourceSignal
+  (-init-attr! [v k element] (-init-signal-attr! v k element))
+  (-init-style-attr! [v k element] (-init-signal-style-attr! v k element))
+
+  sgn/ConstantSignal
+  (-init-attr! [v k element] (-init-signal-attr! v k element))
+  (-init-style-attr! [v k element] (-init-signal-style-attr! v k element))
+
+  sgn/DerivedSignal
+  (-init-attr! [v k element] (-init-signal-attr! v k element))
+  (-init-style-attr! [v k element] (-init-signal-style-attr! v k element)))
 
 (defmethod init-attr! :default [element k v]
   (-init-attr! v k element))
