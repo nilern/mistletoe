@@ -23,22 +23,23 @@
   (mapv (fn [_] (empty-row width)) (range height)))
 
 (defn- next-cells [cells]
-  (let [get-cell (fn [i j]
-                   (some-> cells (get i) (get j)
-                           boolean))                        ; cells out of bounds => nil => false == dead
+  (let [get-cell (fn [i j] (some-> cells (get i) (get j)))
+        get-cell-int (fn [i j] (if (get-cell i j) 1 0))
         live-neighbours (fn [i j]
-                          (reduce + (map (fn [i* j*]
-                                           (if-not (and (= i* i) (= j* j))
-                                             (if (get-cell i* j*) 1 0)
-                                             0))
-                                         (cycle [(dec i) i (inc i)])
-                                         (mapcat (partial repeat 3) [(dec j) j (inc j)]))))
+                          (+ (get-cell-int (dec i) (dec j))
+                             (get-cell-int (dec i) j)
+                             (get-cell-int (dec i) (inc j))
+                             (get-cell-int i (dec j))
+                             (get-cell-int i (inc j))
+                             (get-cell-int (inc i) (dec j))
+                             (get-cell-int (inc i) j)
+                             (get-cell-int (inc i) (inc j))))
         next-cell (fn [cell i j]
                     (if (live? cell)
-                      (condp < (live-neighbours i j)
-                        3 dead                              ; overpopulation
-                        1 live
-                        dead)                               ; underpoopulation
+                      (case (live-neighbours i j)
+                        (0 1) dead ; underpopulation
+                        (2 3) live
+                        dead) ; overpopulation
                       (if (= (live-neighbours i j) 3)
                         live                                ; reproduction
                         dead)))
