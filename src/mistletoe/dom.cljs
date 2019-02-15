@@ -33,13 +33,11 @@
 
 (defn- -init-signal-attr! [sgn k element]
   (.setAttribute element k @sgn)
-  (let [wk (alloc-watch-key)]
-    (add-watch sgn wk (fn [_ _ _ v] (.setAttribute element k v)))))
+  (add-watch sgn (alloc-watch-key) (fn [_ _ _ v] (.setAttribute element k v))))
 
 (defn- -init-signal-style-attr! [sgn k element]
   (obj/set (.-style element) k @sgn)
-  (let [wk (alloc-watch-key)]
-    (add-watch sgn wk (fn [_ _ _ v] (obj/set (.-style element) k v)))))
+  (add-watch sgn (alloc-watch-key) (fn [_ _ _ v] (obj/set (.-style element) k v))))
 
 (extend-protocol AttributeValue
   default
