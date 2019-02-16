@@ -9,13 +9,25 @@
 (defprotocol MatrixGet
   (mget [m i j]))
 
-(defprotocol MatrixRow
-  (mrow [m i]))
+(defprotocol RowMatrix
+  (mrow [m i])
+  (rows [m]))
+
+(defprotocol MatrixUpdate
+  (mupdate [m i j f]))
 
 (defprotocol MatrixSet
   (mset! [m i j v]))
 
 (deftype RowSeq [cells start end]
+  Object
+  (toString [self] (pr-str* self))
+  (equiv [self other] (-equiv self other))
+  (indexOf [self x] (-indexOf self x 0))
+  (indexOf [self x start] (-indexOf self x start))
+  (lastIndexOf [self x] (-lastIndexOf self x (count self)))
+  (lastIndexOf [self x start] (-lastIndexOf self x start))
+
   ICloneable
   (-clone [_] (RowSeq. cells start end))
 
@@ -52,6 +64,12 @@
   IEquiv
   (-equiv [self other] (equiv-sequential self other))
 
+  ICollection
+  (-conj [self v] (cons v self))
+
+  IEmptyableCollection
+  (-empty [_] (.-EMPTY List))
+
   IReduce
   (-reduce [_ f]
     (loop [i (inc start), acc (aget cells start)]
@@ -70,10 +88,18 @@
     (when (in-bounds? rows cols i j)
       (aget cells (internal-index cols i j))))
 
-  MatrixRow
+  RowMatrix
   (mrow [_ i] (let [start (* cols i)
                     end (+ start cols)]
-                (RowSeq. cells start end))))
+                (RowSeq. cells start end)))
+  (rows [self] (map (partial mrow self) (range rows)))
+
+  MatrixUpdate
+  (mupdate [_ i j f]
+    (let [cells* (js/Uint8Array. cells)
+          i (internal-index cols i j)]
+      (aset cells* i (f (aget cells* i)))
+      (ByteMatrix. cells* rows cols))))
 
 (defn byte-matrix [rows cols]
   (ByteMatrix. (js/Uint8Array. (* rows cols)) rows cols))

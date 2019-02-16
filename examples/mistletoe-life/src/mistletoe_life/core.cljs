@@ -1,7 +1,8 @@
 (ns mistletoe-life.core
   (:require [mistletoe.signal :as sgn :refer [smap]]
             [mistletoe.signal.util :refer [seqsig->sigseq]]
-            [mistletoe.dom :refer [el]]))
+            [mistletoe.dom :refer [el]]
+            [mistletoe-life.byte-matrix :as m]))
 
 ;;;;
 
@@ -11,41 +12,46 @@
 
 ;;;;
 
-(def ^:private live true)
-(def ^:private dead false)
+(def ^:private live 1)
+(def ^:private dead 0)
 
-(def ^:private live? identity)
+(defn- live? [cell] (> cell 0))
 
-(defn- empty-row [width]
-  (mapv (constantly dead) (range width)))
+(defn- toggle-cell [cell] (bit-xor cell 1))
 
-(defn- empty-grid [width height]
-  (mapv (fn [_] (empty-row width)) (range height)))
+(defn- empty-grid []
+  (m/byte-matrix height width))
 
 (defn- next-cells [cells]
-  (let [get-cell (fn [i j] (some-> cells (get i) (get j)))
-        get-cell-int (fn [i j] (if (get-cell i j) 1 0))
+  (let [get-cell (fn [i j] (or (m/mget cells i j) 0))
         live-neighbours (fn [i j]
-                          (+ (get-cell-int (dec i) (dec j))
-                             (get-cell-int (dec i) j)
-                             (get-cell-int (dec i) (inc j))
-                             (get-cell-int i (dec j))
-                             (get-cell-int i (inc j))
-                             (get-cell-int (inc i) (dec j))
-                             (get-cell-int (inc i) j)
-                             (get-cell-int (inc i) (inc j))))
-        next-cell (fn [cell i j]
-                    (if (live? cell)
-                      (case (live-neighbours i j)
-                        (0 1) dead ; underpopulation
-                        (2 3) live
-                        dead) ; overpopulation
-                      (if (= (live-neighbours i j) 3)
-                        live                                ; reproduction
-                        dead)))
-        next-row (fn [row i]
-                   (into [] (map-indexed (fn [j cell] (next-cell cell i j))) row))]
-    (into [] (map-indexed #(next-row %2 %1)) cells)))
+                          (+ (get-cell (dec i) (dec j))
+                             (get-cell (dec i) j)
+                             (get-cell (dec i) (inc j))
+                             (get-cell i (dec j))
+                             (get-cell i (inc j))
+                             (get-cell (inc i) (dec j))
+                             (get-cell (inc i) j)
+                             (get-cell (inc i) (inc j))))
+        next-cell (fn [i j]
+                    (let [cell (m/mget cells i j)]
+                      (if (live? cell)
+                        (case (live-neighbours i j)
+                          (0 1) dead ; underpopulation
+                          (2 3) live
+                          dead) ; overpopulation
+                        (if (= (live-neighbours i j) 3)
+                          live ; reproduction
+                          dead))))]
+    (loop [i 0, cells* (m/transient-byte-matrix height width)]
+      (if (< i height)
+        (recur (inc i)
+               (loop [j 0, cells* cells*]
+                 (if (< j width)
+                   (recur (inc j)
+                          (m/mset! cells* i j (next-cell i j)))
+                   cells*)))
+        (m/persistent-byte-matrix! cells*)))))
 
 ;;;;
 
@@ -56,7 +62,7 @@
 
 (def ^:private state
   (sgn/source {:phase :edit
-               :cells (empty-grid width height)}))
+               :cells (empty-grid)}))
 
 (def ^:private editable? (smap #(= (:phase %) :edit) state))
 
@@ -68,10 +74,11 @@
         (el :td
             :style {:width            "15px", :height "15px"
                     :border           "1px solid black"
-                    :background-color (smap #(if % "black" "transparent") cell)}
+                    :background-color (smap #(if (live? %) "black" "transparent") cell)}
             :onclick (fn [_]
                        (when @editable?
-                         (swap! state update-in [:cells i j] not)))))))
+                         (swap! state update :cells
+                                #(m/mupdate % i j toggle-cell))))))))
 
 (defn- ui-main [state]
   (el :div
@@ -87,11 +94,14 @@
       (el :input :type "button" :value "clear"
           :onclick (fn [_]
                      (when @editable?
-                       (swap! state assoc :cells (empty-grid width height)))))
+                       (swap! state assoc :cells (empty-grid)))))
 
       (el :table
           :style {:border-collapse "collapse"}
-          (for [[i row] (map-indexed vector (seqsig->sigseq (smap :cells state)))]
+          (for [[i row] (->> state
+                             (smap (comp m/rows :cells) state)
+                             seqsig->sigseq
+                             (map-indexed vector))]
             (row-view i row)))))
 
 ;;;;
@@ -100,3 +110,4 @@
   (.. js/document
       (getElementById "app-root")
       (appendChild (ui-main state))))
+
