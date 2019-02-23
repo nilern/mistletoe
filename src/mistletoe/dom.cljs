@@ -6,6 +6,10 @@
 
 ;;;;
 
+(defprotocol DOMMount
+  (mount! [node])
+  (unmount! [node]))
+
 (defprotocol Child
   (-init-child! [self parent]))
 
@@ -23,47 +27,78 @@
 
 ;;;;
 
-(defn- proper-node? [dom]
-  (<= (.-nodeType dom) (.-TEXT_NODE js/Node)))
+(defn- proper-node? [dom] (<= (.-nodeType dom) (.-TEXT_NODE js/Node)))
+
+(defn- element? [dom] (= (.-nodeType dom) (.-ELEMENT_NODE js/Node)))
 
 (defn- add-watchee! [dom watchee k f]
   (let [watchees (.-__mistletoeWatchees dom)]
     (set! (.-__mistletoeWatchees dom) (update watchees watchee assoc k f))))
 
-(defn- mount! [dom]
-  (set! (.-__mistletoeDetached dom) false)
-  (doseq [[watchee kfs] (.-__mistletoeWatchees dom)
-          [k f] kfs]
-    (add-watch watchee k f))
+(defn- detached? [dom] (.-__mistletoeDetached dom))
 
-  (doseq [child (prim-seq (.-children dom))
-          :when (proper-node? child)]
-    (mount! child)))
+(defn- mounted? [dom] (not (detached? dom)))
 
-(defn- unmount! [dom]
-  (set! (.-__mistletoeDetached dom) true)
-  (doseq [[watchee kfs] (.-__mistletoeWatchees dom)
-          [k _] kfs]
-    (remove-watch watchee k))
+(extend-protocol DOMMount
+  default
+  (mount! [_])
+  (unmount! [_])
 
-  (doseq [child (prim-seq (.-children dom))
-          :when (proper-node? child)]
-    (unmount! child)))
+
+  js/Element
+  (mount! [element]
+    (set! (.-__mistletoeDetached element) false)
+    (doseq [[watchee kfs] (.-__mistletoeWatchees element)
+            [k f] kfs]
+      (add-watch watchee k f))
+
+    (doseq [child (prim-seq (.-children element))
+            :when (proper-node? child)]
+      (mount! child)))
+
+  (unmount! [element]
+    (set! (.-__mistletoeDetached element) true)
+    (doseq [[watchee kfs] (.-__mistletoeWatchees element)
+            [k _] kfs]
+      (remove-watch watchee k))
+
+    (doseq [child (prim-seq (.-children element))
+            :when (proper-node? child)]
+      (unmount! child)))
+
+
+  js/Text
+  (mount! [text]
+    (set! (.-__mistletoeDetached text) false)
+    (doseq [[watchee kfs] (.-__mistletoeWatchees text)
+            [k f] kfs]
+      (add-watch watchee k f)))
+
+  (unmount! [text]
+    (set! (.-__mistletoeDetached text) true)
+    (doseq [[watchee kfs] (.-__mistletoeWatchees text)
+            [k _] kfs]
+      (remove-watch watchee k))))
 
 ;;;;
+
+(defn append-child! [parent child]
+  (when (mounted? parent)
+    (mount! child))
+  (.appendChild parent child))
 
 (defn- -init-signal-child! [sgn parent]
   (let [v @sgn]
     (if (instance? js/Element v)
       (throw (js/Error. "unimplemented"))
       (let [child (.createTextNode js/document (str v))]
-        (.appendChild parent child)
-        (add-watch sgn (alloc-watch-key)
-                   (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))))))
+        (add-watchee! child sgn (alloc-watch-key)
+                      (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))
+        (append-child! parent child)))))
 
 (extend-protocol Child
   js/Element
-  (-init-child! [child parent] (.appendChild parent child))
+  (-init-child! [child parent] (append-child! parent child))
 
   sgn/SourceSignal
   (-init-child! [child parent] (-init-signal-child! child parent))
@@ -80,11 +115,13 @@
 
 (defn- -init-signal-attr! [sgn k element]
   (.setAttribute element k @sgn)
-  (add-watch sgn (alloc-watch-key) (fn [_ _ _ v] (.setAttribute element k v))))
+  (add-watchee! element sgn (alloc-watch-key)
+                (fn [_ _ _ v] (.setAttribute element k v))))
 
 (defn- -init-signal-style-attr! [sgn k element]
   (obj/set (.-style element) k @sgn)
-  (add-watch sgn (alloc-watch-key) (fn [_ _ _ v] (obj/set (.-style element) k v))))
+  (add-watchee! element sgn (alloc-watch-key)
+                (fn [_ _ _ v] (obj/set (.-style element) k v))))
 
 (extend-protocol AttributeValue
   default
