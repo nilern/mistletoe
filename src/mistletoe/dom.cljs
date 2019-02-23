@@ -27,10 +27,6 @@
 
 ;;;;
 
-(defn- proper-node? [dom] (<= (.-nodeType dom) (.-TEXT_NODE js/Node)))
-
-(defn- element? [dom] (= (.-nodeType dom) (.-ELEMENT_NODE js/Node)))
-
 (defn- add-watchee! [dom watchee k f]
   (let [watchees (.-__mistletoeWatchees dom)]
     (set! (.-__mistletoeWatchees dom) (update watchees watchee assoc k f))))
@@ -38,6 +34,19 @@
 (defn- detached? [dom] (.-__mistletoeDetached dom))
 
 (defn- mounted? [dom] (not (detached? dom)))
+
+(defn- activate-watches! [dom]
+  (doseq [[watchee kfs] (.-__mistletoeWatchees dom)
+          [k f] kfs]
+    (add-watch watchee k f)))
+
+(defn- deactivate-watches! [dom]
+  (doseq [[watchee kfs] (.-__mistletoeWatchees dom)
+          [k _] kfs]
+    (remove-watch watchee k)))
+
+(defn- run-children! [f element]
+  (run! f (prim-seq (.-children element))))
 
 (extend-protocol DOMMount
   default
@@ -47,38 +56,24 @@
 
   js/Element
   (mount! [element]
-    (set! (.-__mistletoeDetached element) false)
-    (doseq [[watchee kfs] (.-__mistletoeWatchees element)
-            [k f] kfs]
-      (add-watch watchee k f))
-
-    (doseq [child (prim-seq (.-children element))
-            :when (proper-node? child)]
-      (mount! child)))
+    (run-children! mount! element)
+    (activate-watches! element)
+    (set! (.-__mistletoeDetached element) false))
 
   (unmount! [element]
-    (set! (.-__mistletoeDetached element) true)
-    (doseq [[watchee kfs] (.-__mistletoeWatchees element)
-            [k _] kfs]
-      (remove-watch watchee k))
-
-    (doseq [child (prim-seq (.-children element))
-            :when (proper-node? child)]
-      (unmount! child)))
+    (run-children! unmount! element)
+    (deactivate-watches! element)
+    (set! (.-__mistletoeDetached element) true))
 
 
   js/Text
   (mount! [text]
-    (set! (.-__mistletoeDetached text) false)
-    (doseq [[watchee kfs] (.-__mistletoeWatchees text)
-            [k f] kfs]
-      (add-watch watchee k f)))
+    (activate-watches! text)
+    (set! (.-__mistletoeDetached text) false))
 
   (unmount! [text]
-    (set! (.-__mistletoeDetached text) true)
-    (doseq [[watchee kfs] (.-__mistletoeWatchees text)
-            [k _] kfs]
-      (remove-watch watchee k))))
+    (deactivate-watches! text)
+    (set! (.-__mistletoeDetached text) true)))
 
 ;;;;
 
