@@ -23,6 +23,35 @@
 
 ;;;;
 
+(defn- proper-node? [dom]
+  (<= (.-nodeType dom) (.-TEXT_NODE js/Node)))
+
+(defn- add-watchee! [dom watchee k f]
+  (let [watchees (.-__mistletoeWatchees dom)]
+    (set! (.-__mistletoeWatchees dom) (update watchees watchee assoc k f))))
+
+(defn- mount! [dom]
+  (set! (.-__mistletoeDetached dom) false)
+  (doseq [[watchee kfs] (.-__mistletoeWatchees dom)
+          [k f] kfs]
+    (add-watch watchee k f))
+
+  (doseq [child (prim-seq (.-children dom))
+          :when (proper-node? child)]
+    (mount! child)))
+
+(defn- unmount! [dom]
+  (set! (.-__mistletoeDetached dom) true)
+  (doseq [[watchee kfs] (.-__mistletoeWatchees dom)
+          [k _] kfs]
+    (remove-watch watchee k))
+
+  (doseq [child (prim-seq (.-children dom))
+          :when (proper-node? child)]
+    (unmount! child)))
+
+;;;;
+
 (defn- -init-signal-child! [sgn parent]
   (let [v @sgn]
     (if (instance? js/Element v)
