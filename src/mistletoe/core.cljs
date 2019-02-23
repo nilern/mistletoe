@@ -1,7 +1,7 @@
 (ns mistletoe.core
   (:require [mistletoe.signal :as sgn :refer [smap]]
             [mistletoe.signal.util :refer [seqsig->sigseq]]
-            [mistletoe.dom :refer [el]]))
+            [mistletoe.dom :refer [el append-child!]]))
 
 (def state (sgn/source ["Pine" "Birch" "Spruce"]))
 
@@ -43,6 +43,6 @@
           (el :input :type "submit" :value "Add tree"))))
 
 (defn main []
-  (.. js/document
-      (getElementById "app-root")
-      (appendChild (ui-root))))
+  (let [parent (.getElementById js/document "app-root")]
+    (append-child! parent (ui-root))))
+

@@ -46,7 +46,7 @@
     (remove-watch watchee k)))
 
 (defn- run-children! [f element]
-  (run! f (prim-seq (.-children element))))
+  (run! f (prim-seq (.-childNodes element))))
 
 (extend-protocol DOMMount
   default
@@ -78,15 +78,16 @@
 ;;;;
 
 (defn append-child! [parent child]
+  (.appendChild parent child)
   (when (mounted? parent)
-    (mount! parent)) ; Also remount parent to activate child signal watches.
-  (.appendChild parent child))
+    ;; OPTIMIZE: Also mounts siblings unnecessarily:
+    (mount! parent))) ; Also remount parent to activate child signal watches.
 
 (defn replace-child! [parent new-child old-child]
+  (.replaceChild parent new-child old-child)
   (when (mounted? parent)
     (unmount! old-child)
-    (mount! new-child))
-  (.replaceChild parent new-child old-child))
+    (mount! new-child)))
 
 (defn- -init-signal-child! [sgn parent]
   (let [v @sgn]
@@ -97,6 +98,7 @@
                         (replace-child! parent new-child old-child)))
         (append-child! parent child))
       (let [child (.createTextNode js/document (str v))]
+        (set! (.-__mistletoeDetached child) true)
         (add-watchee! child sgn (alloc-watch-key)
                       (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))
         (append-child! parent child)))))
@@ -159,6 +161,7 @@
 
 (defn el [tag & args]
   (let [el (.createElement js/document (name tag))]
+    (set! (.-__mistletoeDetached el) true)
     (loop [args args]
       (when-not (empty? args)
         (let [[arg & args] args]
