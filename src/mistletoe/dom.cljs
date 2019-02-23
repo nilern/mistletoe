@@ -79,13 +79,23 @@
 
 (defn append-child! [parent child]
   (when (mounted? parent)
-    (mount! child))
+    (mount! parent)) ; Also remount parent to activate child signal watches.
   (.appendChild parent child))
+
+(defn replace-child! [parent new-child old-child]
+  (when (mounted? parent)
+    (unmount! old-child)
+    (mount! new-child))
+  (.replaceChild parent new-child old-child))
 
 (defn- -init-signal-child! [sgn parent]
   (let [v @sgn]
     (if (instance? js/Element v)
-      (throw (js/Error. "unimplemented"))
+      (let [child v]
+        (add-watchee! parent sgn (alloc-watch-key)
+                      (fn [_ _ old-child new-child]
+                        (replace-child! parent new-child old-child)))
+        (append-child! parent child))
       (let [child (.createTextNode js/document (str v))]
         (add-watchee! child sgn (alloc-watch-key)
                       (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))

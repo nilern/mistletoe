@@ -23,6 +23,13 @@
   (el :div
       (el :h1 "Hello Trees!")
 
+      (smap (fn [trees]
+              (let [n (count trees)]
+                (if (> n 0)
+                  (el :p (str (count trees) " trees"))
+                  (el :h2 "Deforestation strikes again! :'("))))
+            state)
+
       (el :ul :style {:list-style-type "lower-greek"}
           (for [[i name] (map-indexed vector (seqsig->sigseq state))]
             (species-view i name)))
