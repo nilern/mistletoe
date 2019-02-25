@@ -29,3 +29,26 @@
   signal of sequnces `seqsig`."
   [seqsig]
   (map-indexed (fn [i _] (smap #(nth % i) seqsig)) @seqsig))
+
+(def ^:private lookup-sentinel (js-obj))
+
+(defn map-index-cached
+  "`(map-index-cached f)` acts like `(partial map f)` but for indices that were
+  also filled on the previous invocation the previous value gets returned
+  instead of `(f v)`. Useful for templating, where you want to reuse and update
+  existing UI subtrees and possibly add fresh ones to the end."
+  [f]
+  (let [prev (volatile! [])]
+    (fn [coll]
+      (let [prev-coll @prev
+            res (into []
+                      (map-indexed (fn [i v]
+                                     (let [x (get prev-coll i lookup-sentinel)]
+                                       (if (identical? x lookup-sentinel)
+                                         (f v)
+                                         x))))
+                      coll)]
+        (vreset! prev res)))))
+
+;;; TODO: map-key-cached
+
