@@ -33,7 +33,7 @@
 (def ^:private lookup-sentinel (js-obj))
 
 (defn map-index-cached
-  "`(map-index-cached f)` acts like `(partial map f)` but for indices that were
+  "`(map-index-cached f)` acts like `(partial mapv f)` but for indices that were
   also filled on the previous invocation the previous value gets returned
   instead of `(f v)`. Useful for templating, where you want to reuse and update
   existing UI subtrees and possibly add fresh ones to the end."
