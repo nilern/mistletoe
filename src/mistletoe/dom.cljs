@@ -77,17 +77,47 @@
 
 ;;;;
 
+(defn insert-before! [parent child next-child]
+  (.insertBefore parent child next-child)
+  (when (mounted? parent)
+    ;; OPTIMIZE: Also mounts siblings unnecessarily:
+    (mount! parent)))                                       ; Also remount parent to activate child signal watches
+
 (defn append-child! [parent child]
   (.appendChild parent child)
   (when (mounted? parent)
     ;; OPTIMIZE: Also mounts siblings unnecessarily:
-    (mount! parent))) ; Also remount parent to activate child signal watches.
+    (mount! parent)))                                       ; Also remount parent to activate child signal watches.
+
+(defn remove-child! [parent child]
+  (.removeChild parent child)
+  (when (mounted? parent)
+    (unmount! child)))
 
 (defn replace-child! [parent new-child old-child]
   (.replaceChild parent new-child old-child)
   (when (mounted? parent)
     (unmount! old-child)
     (mount! new-child)))
+
+;; FIXME: Won't work if old-children is empty:
+;; FIXME: Everything except simple append seems to be broken even when there are no "buffer overruns":
+;; FIXME: Might have "buffer overruns" also:
+(defn- rearrange-children! [parent old-children new-children]
+  (loop [new-children new-children, current-child (first old-children), nremove 0]
+    (if (seq new-children)
+      (let [[new-child & new-children] new-children]
+        (if (identical? new-child current-child)
+          (recur new-children (.-nextSibling current-child) nremove)
+          (if current-child
+            (do (insert-before! parent new-child current-child)
+                (recur new-children (.-nextSibling current-child) (inc nremove)))
+            (do (append-child! parent new-child)
+                (recur new-children current-child nremove)))))
+      (loop [nremove nremove, current-child current-child]
+        (when (pos? nremove)
+          (remove-child! parent current-child)
+          (recur (dec nremove) (.-nextSibling current-child)))))))
 
 (defn- -init-signal-child! [sgn parent]
   (let [v @sgn]
@@ -97,11 +127,17 @@
                       (fn [_ _ old-child new-child]
                         (replace-child! parent new-child old-child)))
         (append-child! parent child))
-      (let [child (.createTextNode js/document (str v))]
-        (set! (.-__mistletoeDetached child) true)
-        (add-watchee! child sgn (alloc-watch-key)
-                      (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))
-        (append-child! parent child)))))
+      (if (or (string? v) (not (seqable? v)))
+        (let [child (.createTextNode js/document (str v))]
+          (set! (.-__mistletoeDetached child) true)
+          (add-watchee! child sgn (alloc-watch-key)
+                        (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))
+          (append-child! parent child))
+        (do (add-watchee! parent sgn (alloc-watch-key)
+                          (fn [_ _ old-children new-children]
+                            (rearrange-children! parent old-children new-children)))
+            (doseq [child v]
+              (append-child! parent child)))))))
 
 (extend-protocol Child
   js/Element

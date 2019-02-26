@@ -1,6 +1,6 @@
 (ns mistletoe.core
   (:require [mistletoe.signal :as sgn :refer [smap]]
-            [mistletoe.signal.util :refer [seqsig->sigseq]]
+            [mistletoe.signal.util :refer [map-index-cached]]
             [mistletoe.dom :refer [el append-child!]]))
 
 (def state (sgn/source ["Pine" "Birch" "Spruce"]))
@@ -31,8 +31,10 @@
             state)
 
       (el :ul :style {:list-style-type "lower-greek"}
-          (for [[i name] (map-indexed vector (seqsig->sigseq state))]
-            (species-view i name)))
+          ;; TODO: Make doing this easier:
+          (->> state
+               (smap (partial map-indexed (fn [i _] [i (smap #(nth % i) state)])))
+               (smap (map-index-cached (fn [[i name]] (species-view i name))))))
 
       (el :form
           :onsubmit (fn [ev]
