@@ -1,7 +1,7 @@
 (ns mistletoe-life.core
   (:require [mistletoe.signal :as sgn :refer [smap]]
             [mistletoe.signal.util :refer [seqsig->sigseq]]
-            [mistletoe.dom :refer [el]]
+            [mistletoe.dom :refer [el append-child!]]
             [mistletoe-life.byte-matrix :as m]))
 
 ;;;;
@@ -107,7 +107,6 @@
 ;;;;
 
 (defn main []
-  (.. js/document
-      (getElementById "app-root")
-      (appendChild (ui-main state))))
+  (let [parent (.getElementById js/document "app-root")]
+    (append-child! parent (ui-main state))))
 
