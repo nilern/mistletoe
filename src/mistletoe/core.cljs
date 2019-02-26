@@ -33,7 +33,7 @@
       (el :ul :style {:list-style-type "lower-greek"}
           ;; TODO: Make doing this easier:
           (->> state
-               (smap (partial map-indexed (fn [i _] [i (smap #(nth % i) state)])))
+               (smap (partial map-indexed (fn [i _] [i (smap #(nth % i nil) state)])))
                (smap (map-index-cached (fn [[i name]] (species-view i name))))))
 
       (el :form

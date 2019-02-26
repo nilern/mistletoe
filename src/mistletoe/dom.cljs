@@ -100,24 +100,45 @@
     (unmount! old-child)
     (mount! new-child)))
 
-;; FIXME: Won't work if old-children is empty:
-;; FIXME: Everything except simple append seems to be broken even when there are no "buffer overruns":
-;; FIXME: Might have "buffer overruns" also:
-(defn- rearrange-children! [parent old-children new-children]
-  (loop [new-children new-children, current-child (first old-children), nremove 0]
+(defprotocol FlattenChild
+  (flatten-child [child]))
+
+(extend-protocol FlattenChild
+  sgn/SourceSignal
+  (flatten-child [child] (flatten-child @child))
+
+  sgn/ConstantSignal
+  (flatten-child [child] (flatten-child @child))
+
+  sgn/DerivedSignal
+  (flatten-child [child] (flatten-child @child))
+
+  default
+  (flatten-child [child]
+    (if (or (string? child) (not (seqable? child)))
+      [child]
+      (mapcat flatten-child child))))
+
+;; OPTIMIZE: Probably allocates and thunkifies unnecessarily:
+(defn- flat-children [parent]
+  (flatten-child (.-__mistletoeChildArgs parent)))
+
+(defn- rearrange-children! [parent]
+  (loop [new-children (flat-children parent)
+         old-child (aget (.-childNodes parent) 0)]
     (if (seq new-children)
       (let [[new-child & new-children] new-children]
-        (if (identical? new-child current-child)
-          (recur new-children (.-nextSibling current-child) nremove)
-          (if current-child
-            (do (insert-before! parent new-child current-child)
-                (recur new-children (.-nextSibling current-child) (inc nremove)))
-            (do (append-child! parent new-child)
-                (recur new-children current-child nremove)))))
-      (loop [nremove nremove, current-child current-child]
-        (when (pos? nremove)
-          (remove-child! parent current-child)
-          (recur (dec nremove) (.-nextSibling current-child)))))))
+        (if old-child
+          (do (when-not (identical? new-child old-child)
+                (insert-before! parent new-child old-child))
+              (recur new-children (.-nextSibling old-child)))
+          ;; Append new children where no one has gone before:
+          (do (append-child! parent new-child)
+              (recur new-children old-child))))
+      (when old-child
+        ;; Remove old children that are not needed any more.
+        (remove-child! parent old-child)
+        (recur new-children (.-nextSibling old-child))))))
 
 (defn- -init-signal-child! [sgn parent]
   (let [v @sgn]
@@ -134,8 +155,8 @@
                         (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))
           (append-child! parent child))
         (do (add-watchee! parent sgn (alloc-watch-key)
-                          (fn [_ _ old-children new-children]
-                            (rearrange-children! parent old-children new-children)))
+                          ;; OPTIMIZE: Rearranges all children every time:
+                          (fn [_ _ _ _] (rearrange-children! parent)))
             (doseq [child v]
               (append-child! parent child)))))))
 
@@ -198,18 +219,19 @@
 (defn el [tag & args]
   (let [el (.createElement js/document (name tag))]
     (set! (.-__mistletoeDetached el) true)
-    (loop [args args]
-      (when-not (empty? args)
+    (loop [args args, child-args []]
+      (if-not (empty? args)
         (let [[arg & args] args]
           (if (keyword? arg)
             (if (empty? args)
               (throw (js/Error. (str "No value for attribute " arg)))
               (let [[arg* & args] args]
                 (init-attr! el (name arg) arg*)
-                (recur args)))
+                (recur args child-args)))
             (do (if (or (string? arg) (not (seqable? arg)))
                   (init-child! el arg)
                   (doseq [arg arg]
                     (init-child! el arg)))
-                (recur args))))))
+                (recur args (conj child-args arg)))))
+        (set! (.-__mistletoeChildArgs el) child-args)))
     el))
