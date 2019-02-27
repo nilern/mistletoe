@@ -1,6 +1,6 @@
-# mistletoe-life
+# mistletoe-deck
 
-Conway's Game of Life demo for Mistletoe
+Deck of cards demo for Mistletoe
 
 ## Installation
 
