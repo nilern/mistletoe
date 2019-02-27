@@ -146,22 +146,17 @@
       (let [child v]
         (add-watchee! parent sgn (alloc-watch-key)
                       (fn [_ _ old-child new-child]
-                        (when (not= new-child old-child)
-                          (replace-child! parent new-child old-child))))
+                        (replace-child! parent new-child old-child)))
         (append-child! parent child))
       (if (or (string? v) (not (seqable? v)))
         (let [child (.createTextNode js/document (str v))]
           (set! (.-__mistletoeDetached child) true)
           (add-watchee! child sgn (alloc-watch-key)
-                        (fn [_ _ oldv newv]
-                          (when (not= newv oldv)
-                            (set! (.-nodeValue child) (str newv)))))
+                        (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))
           (append-child! parent child))
         (do (add-watchee! parent sgn (alloc-watch-key)
                           ;; OPTIMIZE: Rearranges all children every time:
-                          (fn [_ _ old-children new-children]
-                            (when (not= new-children old-children)
-                              (rearrange-children! parent))))
+                          (fn [_ _ _ _] (rearrange-children! parent)))
             (doseq [child v]
               (append-child! parent child)))))))
 
@@ -185,16 +180,12 @@
 (defn- -init-signal-attr! [sgn k element]
   (.setAttribute element k @sgn)
   (add-watchee! element sgn (alloc-watch-key)
-                (fn [_ _ oldv newv]
-                  (when (not= newv oldv)
-                    (.setAttribute element k newv)))))
+                (fn [_ _ _ v] (.setAttribute element k v))))
 
 (defn- -init-signal-style-attr! [sgn k element]
   (obj/set (.-style element) k @sgn)
   (add-watchee! element sgn (alloc-watch-key)
-                (fn [_ _ oldv newv]
-                  (when (not= newv oldv)
-                    (obj/set (.-style element) k newv)))))
+                (fn [_ _ _ v] (obj/set (.-style element) k v))))
 
 (extend-protocol AttributeValue
   default
