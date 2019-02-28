@@ -9,7 +9,7 @@
        (.floor js/Math)                                     ; clip
        (+ min)))                                            ; translate
 
-(def ^:private framerate 2)
+(def ^:private framerate 3)
 
 ;;;;
 
@@ -43,9 +43,15 @@
   Object
   (toString [_] (str (rank-symbol rank) (suit-symbol suit))))
 
-(defn- ic-by-initial-card [initial-card deck]
-  (some (fn [[_i card :as ic]] (and (= card initial-card) ic))
-        (map-indexed vector deck)))
+(defn- suit< [suit1 suit2]
+  (< (-indexOf suits suit1) (-indexOf suits suit2)))
+
+(def ^:private rank< <)
+
+(defn- card< [{suit1 :suit, rank1 :rank} {suit2 :suit, rank2 :rank}]
+  (if (= suit1 suit2)
+    (rank< rank1 rank2)
+    (suit< suit1 suit2)))
 
 ;;;;
 
@@ -79,6 +85,10 @@
       (add-watch i wk wf))
     view))
 
+(defn- ic-by-initial-card [initial-card deck]
+  (some (fn [[_i card :as ic]] (and (= card initial-card) ic))
+        (map-indexed vector deck)))
+
 (defn- ui-main [state]
   (let [deck (smap :deck state)]
     (el :div
@@ -99,6 +109,27 @@
                              (when @editable?
                                (swap! state assoc :phase :fisher-yates)
                                (swap! state assoc :phase-state {:index 0})
+                               (swap! state assoc :interval-id (.setInterval js/window step (/ 1000 framerate)))))))
+            (el :input :type "button" :value "Insertion sort"
+                :onclick (fn [_]
+                           (let [step (fn [] (swap! state
+                                                    (fn [state]
+                                                      (let [i (-> state :phase-state :index)]
+                                                        (if (< i deck-len)
+                                                          (let [deck (:deck state)
+                                                                icard (get deck i)]
+                                                            (loop [j (dec i), deck deck]
+                                                              (let [jcard (get deck j)]
+                                                                (if (and (>= j 0) (card< icard jcard))
+                                                                  (recur (dec j) (assoc deck (inc j) jcard))
+                                                                  (-> state
+                                                                      (assoc :deck (assoc deck (inc j) icard))
+                                                                      (update-in [:phase-state :index] inc))))))
+                                                          (do (.clearInterval js/window (:interval-id state))
+                                                              (assoc state :phase :select, :phase-state nil)))))))]
+                             (when @editable?
+                               (swap! state assoc :phase :insertion-sort)
+                               (swap! state assoc :phase-state {:index 1})
                                (swap! state assoc :interval-id (.setInterval js/window step (/ 1000 framerate))))))))
 
         (el :div
