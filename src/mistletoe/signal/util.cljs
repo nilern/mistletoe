@@ -50,5 +50,22 @@
                       coll)]
         (vreset! prev res)))))
 
-;;; TODO: map-key-cached
-
+(defn map-key-cached
+  "Like [[map-index-cached]], but caches based on `(get-key i v)` instead of just `i`
+  (where `v` is a value in the [[IReduce]] `coll` and `i` is its index in `coll`."
+  [get-key f]
+  (let [cache (volatile! {})]
+    (fn [coll]
+      (let [cachev @cache
+            [res cachev*] (transduce (map-indexed (fn [i x]
+                                                    (let [k (get-key i x)
+                                                          y (get cachev k lookup-sentinel)]
+                                                      [k (if (identical? y lookup-sentinel)
+                                                           (f x)
+                                                           y)])))
+                                     (completing (fn [[res cachev*] [k x]]
+                                                   [(conj! res x) (assoc! cachev* k x)]))
+                                     [(transient []) (transient {})]
+                                     coll)]
+        (vreset! cache (persistent! cachev*))
+        (persistent! res)))))
