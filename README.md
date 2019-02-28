@@ -8,7 +8,7 @@
 > in the lofty fields,  
 > Full grown in strength  
 > the mistletoe stood.  
-> - Völuspá (Bellows' translation)
+> -- Völuspá (Bellows' translation)
 
 DOM magic box.
 
