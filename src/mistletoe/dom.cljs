@@ -27,7 +27,7 @@
 
 ;;;;
 
-(defn- add-watchee! [dom watchee k f]
+(defn add-watchee! [dom watchee k f]
   (let [watchees (.-__mistletoeWatchees dom)]
     (set! (.-__mistletoeWatchees dom) (update watchees watchee assoc k f))))
 

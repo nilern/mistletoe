@@ -1,15 +1,15 @@
 (ns mistletoe-deck.core
   (:require [mistletoe.signal :as sgn :refer [smap]]
-            [mistletoe.signal.util :refer [map-index-cached]]
-            [mistletoe.dom :refer [el append-child!]]))
+            [mistletoe.signal.util :refer [alloc-watch-key map-key-cached]]
+            [mistletoe.dom :refer [el append-child! add-watchee!]]))
 
-(defn- rand [min max]
+(defn- rand-in-range [min max]
   (->> (.random js/Math)
        (* (- max min))                                      ; zoom
        (.floor js/Math)                                     ; clip
        (+ min)))                                            ; translate
 
-(def ^:private framerate 3)
+(def ^:private framerate 2)
 
 ;;;;
 
@@ -43,6 +43,10 @@
   Object
   (toString [_] (str (rank-symbol rank) (suit-symbol suit))))
 
+(defn- ic-by-initial-card [initial-card deck]
+  (some (fn [[_i card :as ic]] (and (= card initial-card) ic))
+        (map-indexed vector deck)))
+
 ;;;;
 
 (def ^:private state
@@ -56,12 +60,24 @@
 
 ;;;;
 
-(defn- card-view [i card]
-  (el :div :class "card"
-      :style {:color      (smap (comp suit-color :suit) card)
-              :transform  (str "translate(" (* 35 i) "px)")
-              :transition (str "transform " (/ 1000 framerate 2) "ms ease-in-out")}
-      (smap str card)))
+(defn- card-view [ic]
+  (let [i (smap first ic)
+        card (smap second ic)
+        view (el :div :class "card" :id (str @card)
+                 :style {:color      (smap (comp suit-color :suit) card)
+                         :transform  (str "translate(" (* 35 @i) "px)")
+                         :transition (str "transform " (/ 1000 framerate 2) "ms ease-in-out")}
+                 (smap str card))]
+    ;; HACK: Force CSS transition to trigger by letting the element have the old transform when it is re-inserted
+    ;;       to a different location in the DOM:
+    (let [wk (alloc-watch-key)
+          wf (fn [_ _ _ i]
+               (.setTimeout js/window
+                            (fn [] (set! (.. view -style -transform) (str "translate(" (* 35 i) "px)")))
+                            (/ 1000 framerate 4)))]
+      (add-watchee! view i wk wf)
+      (add-watch i wk wf))
+    view))
 
 (defn- ui-main [state]
   (let [deck (smap :deck state)]
@@ -73,7 +89,7 @@
                                                     (fn [state]
                                                       (let [i (-> state :phase-state :index)]
                                                         (if (< i (dec deck-len))
-                                                          (let [j (rand i deck-len)]
+                                                          (let [j (rand-in-range i deck-len)]
                                                             (-> state
                                                                 (assoc-in [:deck i] (get-in state [:deck j]))
                                                                 (assoc-in [:deck j] (get-in state [:deck i]))
@@ -86,9 +102,13 @@
                                (swap! state assoc :interval-id (.setInterval js/window step (/ 1000 framerate))))))))
 
         (el :div
-            (->> deck
-                 (smap (partial map-indexed (fn [i _] [i (smap #(nth % i nil) deck)])))
-                 (smap (map-index-cached (fn [[i card]] (card-view i card)))))))))
+            (let [ics (smap (fn [initial-deck]
+                              (for [initial-card initial-deck]
+                                (smap (partial ic-by-initial-card initial-card) deck)))
+                            deck)]
+              (smap (map-key-cached (fn [_ ic] (second @ic))
+                                    (fn [ic] (card-view ic)))
+                    ics))))))
 
 ;;;;
 
