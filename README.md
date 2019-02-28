@@ -1,5 +1,15 @@
 # mistletoe
 
+> I saw for Baldr,
+> the bleeding god,
+> The son of Othin,
+> his destiny set:
+> Famous and fair
+> in the lofty fields,
+> Full grown in strength
+> the mistletoe stood.
+> - Völuspá (Bellows' translation)
+
 DOM magic box.
 
 ## Usage
