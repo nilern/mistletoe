@@ -4,48 +4,70 @@
             [mistletoe.signal :as sgn]
             [mistletoe.signal.util :refer [alloc-watch-key]]))
 
-;;;;
+;;;; # Protocols and Multimethods to Implement
 
 (defprotocol DOMMount
-  (mount! [node])
-  (unmount! [node]))
+  "Lifecycle protocol (for i.e. for activating and deactivating signal subscriptions)."
+  (mount! [node] "Called when mounting to DOM.")
+  (unmount! [node] "Called when unmounting from DOM."))
 
 (defprotocol Child
-  (-init-child! [self parent]))
+  "Things that can be parented by DOM nodes."
+  (-init-child! [self parent] "Append `self` under `parent` and do any other required initialization
+                              (i.e. set up watches)."))
 
-(defn init-child! [element child]
+(defn init-child!
+  "Append `child` under `parent` and do any other required initialization (i.e. set up watches)."
+  [element child]
   (-init-child! child element))
 
 (defprotocol AttributeValue
-  (-init-attr! [self name element])
-  (-init-style-attr! [self name element]))
+  (-init-attr! [self name element] "Set initial attribute value and eny other setup (i.e. set up watches),
+                                   dispatching on the initial value.")
+  (-init-style-attr! [self name element] "Set initial style value and eny other setup (i.e. set up watches),
+                                         dispatching on the initial value."))
 
-(defmulti init-attr! (fn [_element k _v]
-                       (if (s/starts-with? k "on")
-                         :event
-                         k)))
+(defmulti init-attr!
+          "Set initial attribute value and eny other setup (i.e. set up watches)."
+          (fn [_element k _v]
+            (if (s/starts-with? k "on")
+              :event
+              k)))
 
-;;;;
+;;;; # DOM Node Watch Lifecycle
 
-(defn add-watchee! [dom watchee k f]
+(defn add-watchee!
+  "Add a `watchee` with key `k` and callback `f` to `dom`, but don't [[add-watch]] to `watchee` yet."
+  [dom watchee k f]
   (let [watchees (.-__mistletoeWatchees dom)]
     (set! (.-__mistletoeWatchees dom) (update watchees watchee assoc k f))))
 
-(defn- detached? [dom] (.-__mistletoeDetached dom))
+(defn- detached?
+  "Is `dom` not mounted to the unmanaged DOM."
+  [dom]
+  (.-__mistletoeDetached dom))
 
-(defn- mounted? [dom] (not (detached? dom)))
+(def ^:private mounted?
+  "Is the node mounted to the unmamaged DOM."
+  (complement detached?))
 
-(defn- activate-watches! [dom]
+(defn- activate-watches!
+  "Activate the watches in `dom` (i.e. call [[add-watch]] for each of them)."
+  [dom]
   (doseq [[watchee kfs] (.-__mistletoeWatchees dom)
           [k f] kfs]
     (add-watch watchee k f)))
 
-(defn- deactivate-watches! [dom]
+(defn- deactivate-watches!
+  "Activate the watches in `dom` (i.e. call [[remove-watch]] for each of them)."
+  [dom]
   (doseq [[watchee kfs] (.-__mistletoeWatchees dom)
           [k _] kfs]
     (remove-watch watchee k)))
 
-(defn- run-children! [f element]
+(defn- run-children!
+  "Call the side-effecting function `f` on each child of `element`."
+  [f element]
   (run! f (prim-seq (.-childNodes element))))
 
 (extend-protocol DOMMount
@@ -75,33 +97,42 @@
     (deactivate-watches! text)
     (set! (.-__mistletoeDetached text) true)))
 
-;;;;
+;;;; # Children
 
-(defn insert-before! [parent child next-child]
+(defn insert-before!
+  "A version of `Element/insertBefore` that also uses [[DOMMount]] appropriately."
+  [parent child next-child]
   (.insertBefore parent child next-child)
   (when (mounted? parent)
     ;; OPTIMIZE: Also mounts siblings unnecessarily:
     (mount! parent)))                                       ; Also remount parent to activate child signal watches
 
-(defn append-child! [parent child]
+(defn append-child!
+  "A version of `Element/appendChild` that also uses [[DOMMount]] appropriately."
+  [parent child]
   (.appendChild parent child)
   (when (mounted? parent)
     ;; OPTIMIZE: Also mounts siblings unnecessarily:
     (mount! parent)))                                       ; Also remount parent to activate child signal watches.
 
-(defn remove-child! [parent child]
+(defn remove-child!
+  "A version of `Element/removeChild` that also uses [[DOMMount]] appropriately."
+  [parent child]
   (.removeChild parent child)
   (when (mounted? parent)
     (unmount! child)))
 
-(defn replace-child! [parent new-child old-child]
+(defn replace-child!
+  "A version of `Element/replaceChild` that also uses [[DOMMount]] appropriately."
+  [parent new-child old-child]
   (.replaceChild parent new-child old-child)
   (when (mounted? parent)
     (unmount! old-child)
     (mount! new-child)))
 
 (defprotocol FlattenChild
-  (flatten-child [child]))
+  "Producing a flat sequence of child nodes."
+  (flatten-child [child] "Flatten any sequences and deref any [[IDeref]]:s in `child`."))
 
 (extend-protocol FlattenChild
   sgn/SourceSignal
@@ -120,10 +151,14 @@
       (mapcat flatten-child child))))
 
 ;; OPTIMIZE: Probably allocates and thunkifies unnecessarily:
-(defn- flat-children [parent]
+(defn- flat-children
+  "Get the children of `parent` as a flat, signal-free sequence."
+  [parent]
   (flatten-child (.-__mistletoeChildArgs parent)))
 
-(defn- rearrange-children! [parent]
+(defn- rearrange-children!
+  "Rearrange the children of `parent` to match the current state of its watchees."
+  [parent]
   (loop [new-children (flat-children parent)
          old-child (aget (.-childNodes parent) 0)]
     (if (seq new-children)
@@ -140,7 +175,9 @@
         (remove-child! parent old-child)
         (recur new-children (.-nextSibling old-child))))))
 
-(defn- -init-signal-child! [sgn parent]
+(defn- -init-signal-child!
+  "Implementation of [[-init-child!]] for a signal child."
+  [sgn parent]
   (let [v @sgn]
     (if (instance? js/Element v)
       (let [child v]
@@ -174,15 +211,20 @@
   (-init-child! [child parent] (-init-signal-child! child parent))
 
   default
-  (-init-child! [child parent]
-    (.appendChild parent (.createTextNode js/document (str child)))))
+  (-init-child! [child parent] (.appendChild parent (.createTextNode js/document (str child)))))
 
-(defn- -init-signal-attr! [sgn k element]
+;;;; # Attributes
+
+(defn- -init-signal-attr!
+  "Implementation of [[-init-attr!]] for signal attribute values."
+  [sgn k element]
   (.setAttribute element k @sgn)
   (add-watchee! element sgn (alloc-watch-key)
                 (fn [_ _ _ v] (.setAttribute element k v))))
 
-(defn- -init-signal-style-attr! [sgn k element]
+(defn- -init-signal-style-attr!
+  "Implementation of [[-init-style-attr!]] for signal attribute values."
+  [sgn k element]
   (obj/set (.-style element) k @sgn)
   (add-watchee! element sgn (alloc-watch-key)
                 (fn [_ _ _ v] (obj/set (.-style element) k v))))
@@ -214,9 +256,11 @@
   (doseq [[k v] style-attrs]
     (-init-style-attr! v (name k) element)))
 
-;;;;
+;;;; # Creating Reactive Elements
 
-(defn el [tag & args]
+(defn el
+  "Instantiate the [[INamed]] `tag` (e.g. `:div`) to a [[js/Element]]."
+  [tag & args]
   (let [el (.createElement js/document (name tag))]
     (set! (.-__mistletoeDetached el) true)
     (loop [args args, child-args []]
