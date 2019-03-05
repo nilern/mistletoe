@@ -1,4 +1,7 @@
-(ns mistletoe.signal)
+(ns mistletoe.signal
+  "The signal reference types.")
+
+;;;; # Source
 
 (deftype SourceSignal [^:mutable value ^:mutable watches]
   IDeref
@@ -37,6 +40,8 @@
   [value]
   (SourceSignal. value {}))
 
+;;;; # Constant
+
 (deftype ConstantSignal [value]
   IDeref
   (-deref [_] value)
@@ -51,6 +56,8 @@
   "A constant signal; `deref` always returns `value` and watch operations are no-ops."
   [value]
   (ConstantSignal. value))
+
+;;;; # Derived
 
 (defn- propagator [f dependencies]
   (fn [self dependency _old-val new-val]
