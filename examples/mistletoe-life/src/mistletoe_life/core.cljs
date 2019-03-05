@@ -37,11 +37,11 @@
                     (let [cell (m/mget cells i j)]
                       (if (live? cell)
                         (case (live-neighbours i j)
-                          (0 1) dead ; underpopulation
+                          (0 1) dead                        ; underpopulation
                           (2 3) live
-                          dead) ; overpopulation
+                          dead)                             ; overpopulation
                         (if (= (live-neighbours i j) 3)
-                          live ; reproduction
+                          live                              ; reproduction
                           dead))))]
     (loop [i 0, cells* (m/transient-byte-matrix height width)]
       (if (< i height)
@@ -99,7 +99,7 @@
       (el :table
           :style {:border-collapse "collapse"}
           (for [[i row] (->> state
-                             (smap (comp m/rows :cells) state)
+                             (smap (comp m/rows :cells))
                              seqsig->sigseq
                              (map-indexed vector))]
             (row-view i row)))))

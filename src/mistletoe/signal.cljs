@@ -74,8 +74,7 @@
                                     @dependency))
                                 dependencies))]
       (set! (.-value self) new-val)
-      (when (not= old-val new-val)
-        (-notify-watches self old-val new-val)))))
+      (-notify-watches self old-val new-val))))
 
 (deftype DerivedSignal [f, dependencies, ^:mutable value, equals?, ^:mutable watches]
   IDeref
@@ -115,5 +114,5 @@
 (defn smap
   "Like [[smap*]] but the equality function is always [[=]]."
   [f & signals]
-  (apply source* = f signals))
+  (apply smap* = f signals))
 
