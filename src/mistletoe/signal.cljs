@@ -108,11 +108,20 @@
   "A derived signal; its value is always equal to `(apply f (map deref signals))`.
   Will only notify watchers if the output value actually changed (according to the equality function `equals?`).
   Will only keep watches in `signals` if has watches itself so an impure `f` is not recommended."
-  [equals? f & signals]
-  (DerivedSignal. f signals #_OPTIMIZE (apply f (map deref signals)) equals? {}))
+  ([equals? f] (DerivedSignal. f [] (f) equals? {}))
+  ([equals? f a] (DerivedSignal. f [a] (f @a) equals? {}))
+  ([equals? f a b] (DerivedSignal. f [a b] (f @a @b) equals? {}))
+  ([equals? f a b c] (DerivedSignal. f [a b c] (f @a @b @c) equals? {}))
+  ([equals? f a b c d] (DerivedSignal. f [a b c d] (f @a @b @c @d) equals? {}))
+  ([equals? f a b c d & more]
+   (DerivedSignal. f (into [a b c d] more) (apply f @a @b @c @d (map deref more)) equals? {})))
 
 (defn smap
   "Like [[smap*]] but the equality function is always [[=]]."
-  [f & signals]
-  (apply smap* = f signals))
+  ([f] (smap* = f))
+  ([f a] (smap* = f a))
+  ([f a b] (smap* = f a b))
+  ([f a b c] (smap* = f a b c))
+  ([f a b c d] (smap* = f a b c d))
+  ([f a b c d & more] (apply smap* = f a b c d more)))
 
