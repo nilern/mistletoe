@@ -64,15 +64,33 @@
 
 ;;;; # Derived
 
+(defn- deref-dependency [default-dep default-new-val dependency]
+  (if (identical? dependency default-dep)
+    default-new-val
+    @dependency))
+
 (defn- propagator [f dependencies]
   (fn [self dependency _old-val new-val]
     (let [old-val (.-value self)
-          ;; OPTIMIZE:
-          new-val (apply f (map (fn [dep]
-                                  (if (identical? dep dependency)
-                                    new-val
-                                    @dependency))
-                                dependencies))]
+          new-val (case (count dependencies)
+                    0 (f)
+                    1 (f (deref-dependency dependency new-val (get dependencies 0)))
+                    2 (f (deref-dependency dependency new-val (get dependencies 0))
+                         (deref-dependency dependency new-val (get dependencies 1)))
+                    3 (f (deref-dependency dependency new-val (get dependencies 0))
+                         (deref-dependency dependency new-val (get dependencies 1))
+                         (deref-dependency dependency new-val (get dependencies 2)))
+                    4 (f (deref-dependency dependency new-val (get dependencies 0))
+                         (deref-dependency dependency new-val (get dependencies 1))
+                         (deref-dependency dependency new-val (get dependencies 2))
+                         (deref-dependency dependency new-val (get dependencies 3)))
+                    (apply f
+                           (deref-dependency dependency new-val (get dependencies 0))
+                           (deref-dependency dependency new-val (get dependencies 1))
+                           (deref-dependency dependency new-val (get dependencies 2))
+                           (deref-dependency dependency new-val (get dependencies 3))
+                           (map (partial deref-dependency dependency new-val)
+                                (drop 4 dependencies))))]
       (set! (.-value self) new-val)
       (-notify-watches self old-val new-val))))
 
