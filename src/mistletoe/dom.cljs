@@ -117,16 +117,16 @@
   [parent child next-child]
   (.insertBefore parent child next-child)
   (when (mounted? parent)
-    ;; OPTIMIZE: Also mounts siblings unnecessarily:
-    (mount! parent)))                                       ; Also remount parent to activate child signal watches
+    (mount! child)
+    (activate-watches! parent)))
 
 (defn append-child!
   "A version of `Element/appendChild` that also uses [[DOMMount]] appropriately."
   [parent child]
   (.appendChild parent child)
   (when (mounted? parent)
-    ;; OPTIMIZE: Also mounts siblings unnecessarily:
-    (mount! parent)))                                       ; Also remount parent to activate child signal watches.
+    (mount! child)
+    (activate-watches! parent)))
 
 (defn remove-child!
   "A version of `Element/removeChild` that also uses [[DOMMount]] appropriately."
