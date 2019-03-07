@@ -76,7 +76,7 @@
       (set! (.-value self) new-val)
       (-notify-watches self old-val new-val))))
 
-(deftype DerivedSignal [f, dependencies, ^:mutable value, equals?, ^:mutable watches]
+(deftype DerivedSignal [f, dependencies, ^:mutable value, equals?, ^:mutable watches, propagate]
   IDeref
   (-deref [_] value)
 
@@ -93,7 +93,7 @@
       ;; To avoid space leaks and 'unused' updates to `self` only start watching `dependencies`
       ;; when `self` gets its first watcher:
       (doseq [dependency dependencies]
-        (add-watch dependency self (propagator f dependencies))))
+        (add-watch dependency self propagate)))
     (set! watches (assoc watches k g)))
 
   (-remove-watch [self k]
@@ -108,13 +108,19 @@
   "A derived signal; its value is always equal to `(apply f (map deref signals))`.
   Will only notify watchers if the output value actually changed (according to the equality function `equals?`).
   Will only keep watches in `signals` if has watches itself so an impure `f` is not recommended."
-  ([equals? f] (DerivedSignal. f [] (f) equals? {}))
-  ([equals? f a] (DerivedSignal. f [a] (f @a) equals? {}))
-  ([equals? f a b] (DerivedSignal. f [a b] (f @a @b) equals? {}))
-  ([equals? f a b c] (DerivedSignal. f [a b c] (f @a @b @c) equals? {}))
-  ([equals? f a b c d] (DerivedSignal. f [a b c d] (f @a @b @c @d) equals? {}))
+  ([equals? f] (let [dependencies []]
+                 (DerivedSignal. f dependencies (f) equals? {} (propagator f dependencies))))
+  ([equals? f a] (let [dependencies [a]]
+                   (DerivedSignal. f dependencies (f @a) equals? {} (propagator f dependencies))))
+  ([equals? f a b] (let [dependencies [a b]]
+                     (DerivedSignal. f dependencies (f @a @b) equals? {} (propagator f dependencies))))
+  ([equals? f a b c] (let [dependencies [a b c]]
+                       (DerivedSignal. f dependencies (f @a @b @c) equals? {} (propagator f dependencies))))
+  ([equals? f a b c d] (let [dependencies [a b c d]]
+                         (DerivedSignal. f dependencies (f @a @b @c @d) equals? {} (propagator f dependencies))))
   ([equals? f a b c d & more]
-   (DerivedSignal. f (into [a b c d] more) (apply f @a @b @c @d (map deref more)) equals? {})))
+   (let [dependencies (into [a b c d] more)]
+     (DerivedSignal. f dependencies (apply f @a @b @c @d (map deref more)) equals? {} (propagator f dependencies)))))
 
 (defn smap
   "Like [[smap*]] but the equality function is always [[=]]."
