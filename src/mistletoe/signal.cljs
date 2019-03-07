@@ -71,7 +71,7 @@
     default-new-val
     @dependency))
 
-(def ^:private watch-caller
+(def ^:private mapping-caller
   (memoize
     (fn [arity]
       (case arity
@@ -100,10 +100,10 @@
                       (drop 4 dependencies))))))))
 
 (defn- propagator [f dependencies]
-  (let [call-watch (watch-caller (count dependencies))]
+  (let [call-mapping (mapping-caller (count dependencies))]
     (fn [self dependency _old-val new-val]
       (let [old-val (.-value self)
-            new-val (call-watch f dependency new-val dependencies)]
+            new-val (call-mapping f dependency new-val dependencies)]
         (set! (.-value self) new-val)
         (-notify-watches self old-val new-val)))))
 
