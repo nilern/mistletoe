@@ -26,8 +26,8 @@
   IWatchable
   (-notify-watches [self old-val new-val]
     (when-not (equals? old-val new-val)                     ; This condition is why we don't just use cljs.core/Atom.
-      (doseq [[k f] watches]
-        (f k self old-val new-val))))
+      (reduce-kv (fn [self k f] (f k self old-val new-val)) self watches))
+    nil)
 
   (-add-watch [_ k f] (set! watches (assoc watches k f)))
 
@@ -103,15 +103,14 @@
   (-notify-watches [self old-val new-val]
     ;; TODO: DRY:
     (when-not (equals? old-val new-val)
-      (doseq [[k g] watches]
-        (g k self old-val new-val))))
+      (reduce-kv (fn [self k g] (g k self old-val new-val)) self watches))
+    nil)
 
   (-add-watch [self k g]
     (when (empty? watches)
       ;; To avoid space leaks and 'unused' updates to `self` only start watching `dependencies`
       ;; when `self` gets its first watcher:
-      (doseq [dependency dependencies]
-        (add-watch dependency self propagate)))
+      (reduce (fn [self dependency] (add-watch dependency self propagate)) self dependencies))
     (set! watches (assoc watches k g)))
 
   (-remove-watch [self k]
@@ -119,8 +118,8 @@
     (when (empty? watches)
       ;; Watcher count just became zero, but watchees still have pointers to `self`.
       ;; Remove those to avoid space leaks and 'unused' updates to `self`:
-      (doseq [dependency dependencies]
-        (-remove-watch dependency self)))))
+      (reduce (fn [self dependency] (remove-watch dependency self)) self dependencies))
+    nil))
 
 (defn smap*
   "A derived signal; its value is always equal to `(apply f (map deref signals))`.
