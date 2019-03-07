@@ -5,6 +5,7 @@
   (-alloc-key [self])
   (-return-key [self k]))
 
+;; OPTIMIZE: `used` could just be a mutable stack (e.g. JS array), queue vs. stack doesn't really matter:
 (deftype PerpetualKeyDepot [^:mutable used, ^:mutable counter]
   KeyDepot
   (-alloc-key [_]
@@ -22,6 +23,7 @@
 
 (defn alloc-watch-key [] (-alloc-key key-depot))
 
+;; FIXME: Actually use this (in `mistletoe.dom`):
 (defn free-watch-key [k] (-return-key key-depot k))
 
 (defn seqsig->sigseq
@@ -56,16 +58,15 @@
   [get-key f]
   (let [cache (volatile! {})]
     (fn [coll]
-      (let [cachev @cache
-            [res cachev*] (transduce (map-indexed (fn [i x]
-                                                    (let [k (get-key i x)
-                                                          y (get cachev k lookup-sentinel)]
-                                                      [k (if (identical? y lookup-sentinel)
-                                                           (f x)
-                                                           y)])))
-                                     (completing (fn [[res cachev*] [k x]]
-                                                   [(conj! res x) (assoc! cachev* k x)]))
-                                     [(transient []) (transient {})]
-                                     coll)]
-        (vreset! cache (persistent! cachev*))
-        (persistent! res)))))
+      (let [cachev @cache]
+        (loop [i 0, vs coll, res (transient []), cachev* (transient {})]
+          (if (empty? vs)
+            (do (vreset! cache (persistent! cachev*))
+                (persistent! res))
+            (let [v (first vs)
+                  k (get-key i v)
+                  cached-y (get cachev k lookup-sentinel)
+                  y (if (identical? cached-y lookup-sentinel)
+                      (f v)
+                      cached-y)]
+              (recur (inc i) (rest vs) (conj! res y) (assoc! cachev* k y)))))))))
