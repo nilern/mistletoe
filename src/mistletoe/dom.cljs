@@ -6,6 +6,11 @@
 
 ;;;; # Protocols and Multimethods to Implement
 
+;; TODO: Use this:
+(defprotocol Drop
+  "Manual destructor / resource disposal."
+  (drop! [self] "Destructor; we are done with this object, release any (non-memory) resources immediately."))
+
 (defprotocol DOMMount
   "Lifecycle protocol (for i.e. for activating and deactivating signal subscriptions)."
   (mount! [node] "Called when mounting to DOM.")
@@ -35,6 +40,14 @@
               k)))
 
 ;;;; # DOM Node Watch Lifecycle
+
+;; TODO: Use this:
+(defprotocol Watcher
+  "An object that watches [[IWatchable]]:s only when it is active (e.g. mounted to the DOM)."
+  (add-watchee [self watchee k f])
+  (remove-watchee [self watchee k])
+  (activate-watches [self])
+  (deactivate-watches [self]))
 
 (defn add-watchee!
   "Add a `watchee` with key `k` and callback `f` to `dom`, but don't [[add-watch]] to `watchee` yet."
