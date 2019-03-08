@@ -54,12 +54,7 @@
   (unmount! [node] "Called when unmounting from DOM."))
 
 (extend-protocol DOMMount
-  default
-  (mount! [_])
-  (unmount! [_])
-
-
-  js/Element
+  js/Node
   (mount! [element]
     (run-children! mount! element)
     (activate-watches element)
@@ -71,14 +66,9 @@
     (set! (.-__mistletoeDetached element) true))
 
 
-  js/Text
-  (mount! [text]
-    (activate-watches text)
-    (set! (.-__mistletoeDetached text) false))
-
-  (unmount! [text]
-    (deactivate-watches text)
-    (set! (.-__mistletoeDetached text) true)))
+  default
+  (mount! [_])
+  (unmount! [_]))
 
 ;; TODO: Use this:
 (defprotocol Drop
@@ -86,6 +76,8 @@
   (drop! [self] "Destructor; we are done with this object, release any (non-memory) resources immediately."))
 
 ;;;; # Children
+
+(defn- scalar? [v] (or (string? v) (not (seqable? v))))
 
 (defn insert-before!
   "A version of `Element/insertBefore` that also uses [[DOMMount]] appropriately."
@@ -173,43 +165,52 @@
   [element child]
   (-init-child! child element))
 
-(defn- -init-signal-child!
-  "Implementation of [[-init-child!]] for a signal child."
-  [sgn parent]
-  (let [v @sgn]
-    (if (instance? js/Element v)
-      (let [child v]
-        (add-watchee parent sgn (alloc-watch-key)
-                     (fn [_ _ old-child new-child]
-                       (replace-child! parent new-child old-child)))
+(defprotocol SignalChild
+  (-init-signal-child! [initial-value child parent] "Implementation of [[-init-child!]] for a signal child."))
+
+(extend-protocol SignalChild
+  js/Node
+  (-init-signal-child! [v sgn parent]
+    (let [child v]
+      (add-watchee parent sgn (alloc-watch-key)
+                   (fn [_ _ old-child new-child]
+                     (replace-child! parent new-child old-child)))
+      (append-child! parent child)))
+
+  default
+  (-init-signal-child! [v sgn parent]
+    (if (scalar? v)
+      (let [child (.createTextNode js/document (str v))]
+        (set! (.-__mistletoeDetached child) true)
+        (add-watchee child sgn (alloc-watch-key)
+                     (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))
         (append-child! parent child))
-      (if (or (string? v) (not (seqable? v)))
-        (let [child (.createTextNode js/document (str v))]
-          (set! (.-__mistletoeDetached child) true)
-          (add-watchee child sgn (alloc-watch-key)
-                       (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))
-          (append-child! parent child))
-        (do (add-watchee parent sgn (alloc-watch-key)
-                         ;; OPTIMIZE: Rearranges all children every time:
-                         (fn [_ _ _ _] (rearrange-children! parent)))
-            (doseq [child v]
-              (append-child! parent child)))))))
+
+      (do (add-watchee parent sgn (alloc-watch-key)
+                       ;; OPTIMIZE: Rearranges all children every time:
+                       (fn [_ _ _ _] (rearrange-children! parent)))
+          (doseq [child v]
+            (append-child! parent child))))))
 
 (extend-protocol Child
-  js/Element
+  js/Node
   (-init-child! [child parent] (append-child! parent child))
 
   sgn/SourceSignal
-  (-init-child! [child parent] (-init-signal-child! child parent))
+  (-init-child! [child parent] (-init-signal-child! @child child parent))
 
   sgn/ConstantSignal
-  (-init-child! [child parent] (-init-signal-child! child parent))
+  (-init-child! [child parent] (-init-signal-child! @child child parent))
 
   sgn/DerivedSignal
-  (-init-child! [child parent] (-init-signal-child! child parent))
+  (-init-child! [child parent] (-init-signal-child! @child child parent))
 
   default
-  (-init-child! [child parent] (.appendChild parent (.createTextNode js/document (str child)))))
+  (-init-child! [child parent]
+    (if (scalar? child)
+      (.appendChild parent (.createTextNode js/document (str child)))
+      (doseq [child child]
+        (-init-child! child parent)))))
 
 ;;;; # Attributes
 
@@ -283,10 +284,7 @@
               (let [[arg* & args] args]
                 (init-attr! el (name arg) arg*)
                 (recur args child-args)))
-            (do (if (or (string? arg) (not (seqable? arg)))
-                  (init-child! el arg)
-                  (doseq [arg arg]
-                    (init-child! el arg)))
+            (do (init-child! el arg)
                 (recur args (conj child-args arg)))))
         (set! (.-__mistletoeChildArgs el) child-args)))
     el))
