@@ -26,14 +26,13 @@
 
   (activate-watches [self]
     (reduce-kv (fn [_ watchee kfs]
-                 (reduce-kv (fn [_ k f] (add-watch watchee k f))
-                            nil kfs))
+                 (reduce-kv add-watch watchee kfs))
                nil (.-__mistletoeWatchees self)))
 
   (deactivate-watches [self]
     (reduce-kv (fn [_ watchee kfs]
-                 (reduce-kv (fn [_ k _] (remove-watch watchee k))
-                            nil kfs))
+                 (reduce-kv (fn [watchee k _] (remove-watch watchee k))
+                            watchee kfs))
                nil (.-__mistletoeWatchees self))))
 
 (defn- detached?
