@@ -1,7 +1,7 @@
 (ns mistletoe-deck.core
   (:require [mistletoe.signal :as sgn :refer [smap]]
             [mistletoe.signal.util :refer [alloc-watch-key map-key-cached]]
-            [mistletoe.dom :refer [el append-child! add-watchee!]]))
+            [mistletoe.dom :refer [el append-child! add-watchee]]))
 
 (defn- rand-in-range [min max]
   (->> (.random js/Math)
@@ -81,7 +81,7 @@
                (.setTimeout js/window
                             (fn [] (set! (.. view -style -transform) (str "translate(" (* 35 i) "px)")))
                             (/ 1000 framerate 4)))]
-      (add-watchee! view i wk wf)
+      (add-watchee view i wk wf)
       (add-watch i wk wf))
     view))
 

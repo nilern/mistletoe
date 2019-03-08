@@ -25,14 +25,16 @@
       (set! (.-__mistletoeWatchees self) (update watchees watchee dissoc k))))
 
   (activate-watches [self]
-    (doseq [[watchee kfs] (.-__mistletoeWatchees self)
-            [k f] kfs]
-      (add-watch watchee k f)))
+    (reduce-kv (fn [_ watchee kfs]
+                 (reduce-kv (fn [_ k f] (add-watch watchee k f))
+                            nil kfs))
+               nil (.-__mistletoeWatchees self)))
 
   (deactivate-watches [self]
-    (doseq [[watchee kfs] (.-__mistletoeWatchees self)
-            [k _] kfs]
-      (remove-watch watchee k))))
+    (reduce-kv (fn [_ watchee kfs]
+                 (reduce-kv (fn [_ k _] (remove-watch watchee k))
+                            nil kfs))
+               nil (.-__mistletoeWatchees self))))
 
 (defn- detached?
   "Is `dom` not mounted to the unmanaged DOM."
@@ -46,7 +48,10 @@
 (defn- run-children!
   "Call the side-effecting function `f` on each child of `element`."
   [f element]
-  (run! f (prim-seq (.-childNodes element))))
+  (loop [child (aget (.-childNodes element) 0)]
+    (when child
+      (f child)
+      (recur (.-nextSibling child)))))
 
 (defprotocol DOMMount
   "Lifecycle protocol (for i.e. for activating and deactivating signal subscriptions)."
@@ -127,7 +132,7 @@
   default
   (flatten-child [child]
     (if (or (string? child) (not (seqable? child)))
-      [child]
+      (list child)
       (mapcat flatten-child child))))
 
 ;; OPTIMIZE: Probably allocates and thunkifies unnecessarily:
@@ -197,8 +202,7 @@
       (do (add-watchee parent sgn (alloc-watch-key)
                        ;; OPTIMIZE: Rearranges all children every time:
                        (fn [_ _ _ _] (rearrange-children! parent)))
-          (doseq [child v]
-            (append-child! parent child))))))
+          (run! (partial append-child! parent) v)))))
 
 (extend-protocol Child
   js/Node
@@ -217,8 +221,7 @@
   (-init-child! [child parent]
     (if (scalar? child)
       (.appendChild parent (.createTextNode js/document (str child)))
-      (doseq [child child]
-        (-init-child! child parent)))))
+      (run! #(-init-child! % parent) child))))
 
 ;;;; # Attributes
 
@@ -232,15 +235,13 @@
   "Implementation of [[-init-attr!]] for signal attribute values."
   [sgn k element]
   (.setAttribute element k @sgn)
-  (add-watchee element sgn (alloc-watch-key)
-               (fn [_ _ _ v] (.setAttribute element k v))))
+  (add-watchee element sgn (alloc-watch-key) (fn [_ _ _ v] (.setAttribute element k v))))
 
 (defn- -init-signal-style-attr!
   "Implementation of [[-init-style-attr!]] for signal attribute values."
   [sgn k element]
   (obj/set (.-style element) k @sgn)
-  (add-watchee element sgn (alloc-watch-key)
-               (fn [_ _ _ v] (obj/set (.-style element) k v))))
+  (add-watchee element sgn (alloc-watch-key) (fn [_ _ _ v] (obj/set (.-style element) k v))))
 
 (extend-protocol AttributeValue
   default
@@ -273,8 +274,7 @@
   (.addEventListener element (subs k 2) f))
 
 (defmethod init-attr! "style" [element _ style-attrs]
-  (doseq [[k v] style-attrs]
-    (-init-style-attr! v (name k) element)))
+  (reduce-kv (fn [element k v] (-init-style-attr! v (name k) element)) element style-attrs))
 
 ;;;; # Creating Reactive Elements
 
