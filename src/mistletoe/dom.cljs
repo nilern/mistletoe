@@ -6,19 +6,33 @@
 
 ;;;; # DOM Node Watch Lifecycle
 
-;; TODO: Use this:
 (defprotocol Watcher
   "An object that watches [[IWatchable]]:s only when it is active (e.g. mounted to the DOM)."
-  (add-watchee [self watchee k f])
-  (remove-watchee [self watchee k])
-  (activate-watches [self])
-  (deactivate-watches [self]))
+  (add-watchee [self watchee k f] "Add a `watchee` with key `k` and callback `f` to `self`,
+                                  but don't [[add-watch]] to `watchee` yet.")
+  (remove-watchee [self watchee k] "Remove the `watchee` with key `k` from `self`.")
+  (activate-watches [self] "Activate the watches in `self` (i.e. call [[add-watch]] for each of them).")
+  (deactivate-watches [self] "Deactivate the watches in `self` (i.e. call [[remove-watch]] for each of them)."))
 
-(defn add-watchee!
-  "Add a `watchee` with key `k` and callback `f` to `dom`, but don't [[add-watch]] to `watchee` yet."
-  [dom watchee k f]
-  (let [watchees (.-__mistletoeWatchees dom)]
-    (set! (.-__mistletoeWatchees dom) (update watchees watchee assoc k f))))
+(extend-protocol Watcher
+  js/Node
+  (add-watchee [self watchee k f]
+    (let [watchees (.-__mistletoeWatchees self)]
+      (set! (.-__mistletoeWatchees self) (update watchees watchee assoc k f))))
+
+  (remove-watchee [self watchee k]
+    (let [watchees (.-__mistletoeWatchees self)]
+      (set! (.-__mistletoeWatchees self) (update watchees watchee dissoc k))))
+
+  (activate-watches [self]
+    (doseq [[watchee kfs] (.-__mistletoeWatchees self)
+            [k f] kfs]
+      (add-watch watchee k f)))
+
+  (deactivate-watches [self]
+    (doseq [[watchee kfs] (.-__mistletoeWatchees self)
+            [k _] kfs]
+      (remove-watch watchee k))))
 
 (defn- detached?
   "Is `dom` not mounted to the unmanaged DOM."
@@ -28,20 +42,6 @@
 (def ^:private mounted?
   "Is the node mounted to the unmamaged DOM."
   (complement detached?))
-
-(defn- activate-watches!
-  "Activate the watches in `dom` (i.e. call [[add-watch]] for each of them)."
-  [dom]
-  (doseq [[watchee kfs] (.-__mistletoeWatchees dom)
-          [k f] kfs]
-    (add-watch watchee k f)))
-
-(defn- deactivate-watches!
-  "Activate the watches in `dom` (i.e. call [[remove-watch]] for each of them)."
-  [dom]
-  (doseq [[watchee kfs] (.-__mistletoeWatchees dom)
-          [k _] kfs]
-    (remove-watch watchee k)))
 
 (defn- run-children!
   "Call the side-effecting function `f` on each child of `element`."
@@ -62,22 +62,22 @@
   js/Element
   (mount! [element]
     (run-children! mount! element)
-    (activate-watches! element)
+    (activate-watches element)
     (set! (.-__mistletoeDetached element) false))
 
   (unmount! [element]
     (run-children! unmount! element)
-    (deactivate-watches! element)
+    (deactivate-watches element)
     (set! (.-__mistletoeDetached element) true))
 
 
   js/Text
   (mount! [text]
-    (activate-watches! text)
+    (activate-watches text)
     (set! (.-__mistletoeDetached text) false))
 
   (unmount! [text]
-    (deactivate-watches! text)
+    (deactivate-watches text)
     (set! (.-__mistletoeDetached text) true)))
 
 ;; TODO: Use this:
@@ -93,7 +93,7 @@
   (.insertBefore parent child next-child)
   (when (mounted? parent)
     (mount! child)
-    (activate-watches! parent)))
+    (activate-watches parent)))
 
 (defn append-child!
   "A version of `Element/appendChild` that also uses [[DOMMount]] appropriately."
@@ -101,7 +101,7 @@
   (.appendChild parent child)
   (when (mounted? parent)
     (mount! child)
-    (activate-watches! parent)))
+    (activate-watches parent)))
 
 (defn remove-child!
   "A version of `Element/removeChild` that also uses [[DOMMount]] appropriately."
@@ -179,19 +179,19 @@
   (let [v @sgn]
     (if (instance? js/Element v)
       (let [child v]
-        (add-watchee! parent sgn (alloc-watch-key)
-                      (fn [_ _ old-child new-child]
-                        (replace-child! parent new-child old-child)))
+        (add-watchee parent sgn (alloc-watch-key)
+                     (fn [_ _ old-child new-child]
+                       (replace-child! parent new-child old-child)))
         (append-child! parent child))
       (if (or (string? v) (not (seqable? v)))
         (let [child (.createTextNode js/document (str v))]
           (set! (.-__mistletoeDetached child) true)
-          (add-watchee! child sgn (alloc-watch-key)
-                        (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))
+          (add-watchee child sgn (alloc-watch-key)
+                       (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))
           (append-child! parent child))
-        (do (add-watchee! parent sgn (alloc-watch-key)
-                          ;; OPTIMIZE: Rearranges all children every time:
-                          (fn [_ _ _ _] (rearrange-children! parent)))
+        (do (add-watchee parent sgn (alloc-watch-key)
+                         ;; OPTIMIZE: Rearranges all children every time:
+                         (fn [_ _ _ _] (rearrange-children! parent)))
             (doseq [child v]
               (append-child! parent child)))))))
 
@@ -223,15 +223,15 @@
   "Implementation of [[-init-attr!]] for signal attribute values."
   [sgn k element]
   (.setAttribute element k @sgn)
-  (add-watchee! element sgn (alloc-watch-key)
-                (fn [_ _ _ v] (.setAttribute element k v))))
+  (add-watchee element sgn (alloc-watch-key)
+               (fn [_ _ _ v] (.setAttribute element k v))))
 
 (defn- -init-signal-style-attr!
   "Implementation of [[-init-style-attr!]] for signal attribute values."
   [sgn k element]
   (obj/set (.-style element) k @sgn)
-  (add-watchee! element sgn (alloc-watch-key)
-                (fn [_ _ _ v] (obj/set (.-style element) k v))))
+  (add-watchee element sgn (alloc-watch-key)
+               (fn [_ _ _ v] (obj/set (.-style element) k v))))
 
 (extend-protocol AttributeValue
   default
