@@ -37,12 +37,12 @@
                nil (.-__mistletoeWatchees self))))
 
 (defn- detached?
-  "Is `dom` not mounted to the unmanaged DOM."
+  "Is `dom` not mounted to the unmanaged DOM?"
   [dom]
   (.-__mistletoeDetached dom))
 
 (def ^:private mounted?
-  "Is the node mounted to the unmamaged DOM."
+  "Is the node mounted to the unmanaged DOM?"
   (complement detached?))
 
 (defn- run-children!
