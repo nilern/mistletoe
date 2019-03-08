@@ -4,41 +4,6 @@
             [mistletoe.signal :as sgn]
             [mistletoe.signal.util :refer [alloc-watch-key]]))
 
-;;;; # Protocols and Multimethods to Implement
-
-;; TODO: Use this:
-(defprotocol Drop
-  "Manual destructor / resource disposal."
-  (drop! [self] "Destructor; we are done with this object, release any (non-memory) resources immediately."))
-
-(defprotocol DOMMount
-  "Lifecycle protocol (for i.e. for activating and deactivating signal subscriptions)."
-  (mount! [node] "Called when mounting to DOM.")
-  (unmount! [node] "Called when unmounting from DOM."))
-
-(defprotocol Child
-  "Things that can be parented by DOM nodes."
-  (-init-child! [self parent] "Append `self` under `parent` and do any other required initialization
-                              (i.e. set up watches)."))
-
-(defn init-child!
-  "Append `child` under `parent` and do any other required initialization (i.e. set up watches)."
-  [element child]
-  (-init-child! child element))
-
-(defprotocol AttributeValue
-  (-init-attr! [self name element] "Set initial attribute value and eny other setup (i.e. set up watches),
-                                   dispatching on the initial value.")
-  (-init-style-attr! [self name element] "Set initial style value and eny other setup (i.e. set up watches),
-                                         dispatching on the initial value."))
-
-(defmulti init-attr!
-          "Set initial attribute value and eny other setup (i.e. set up watches)."
-          (fn [_element k _v]
-            (if (s/starts-with? k "on")
-              :event
-              k)))
-
 ;;;; # DOM Node Watch Lifecycle
 
 ;; TODO: Use this:
@@ -83,6 +48,11 @@
   [f element]
   (run! f (prim-seq (.-childNodes element))))
 
+(defprotocol DOMMount
+  "Lifecycle protocol (for i.e. for activating and deactivating signal subscriptions)."
+  (mount! [node] "Called when mounting to DOM.")
+  (unmount! [node] "Called when unmounting from DOM."))
+
 (extend-protocol DOMMount
   default
   (mount! [_])
@@ -109,6 +79,11 @@
   (unmount! [text]
     (deactivate-watches! text)
     (set! (.-__mistletoeDetached text) true)))
+
+;; TODO: Use this:
+(defprotocol Drop
+  "Manual destructor / resource disposal."
+  (drop! [self] "Destructor; we are done with this object, release any (non-memory) resources immediately."))
 
 ;;;; # Children
 
@@ -188,6 +163,16 @@
         (remove-child! parent old-child)
         (recur new-children (.-nextSibling old-child))))))
 
+(defprotocol Child
+  "Things that can be parented by DOM nodes."
+  (-init-child! [self parent] "Append `self` under `parent` and do any other required initialization
+                              (i.e. set up watches)."))
+
+(defn init-child!
+  "Append `child` under `parent` and do any other required initialization (i.e. set up watches)."
+  [element child]
+  (-init-child! child element))
+
 (defn- -init-signal-child!
   "Implementation of [[-init-child!]] for a signal child."
   [sgn parent]
@@ -228,6 +213,12 @@
 
 ;;;; # Attributes
 
+(defprotocol AttributeValue
+  (-init-attr! [self name element] "Set initial attribute value and eny other setup (i.e. set up watches),
+                                   dispatching on the initial value.")
+  (-init-style-attr! [self name element] "Set initial style value and eny other setup (i.e. set up watches),
+                                         dispatching on the initial value."))
+
 (defn- -init-signal-attr!
   "Implementation of [[-init-attr!]] for signal attribute values."
   [sgn k element]
@@ -258,6 +249,13 @@
   sgn/DerivedSignal
   (-init-attr! [v k element] (-init-signal-attr! v k element))
   (-init-style-attr! [v k element] (-init-signal-style-attr! v k element)))
+
+(defmulti init-attr!
+          "Set initial attribute value and eny other setup (i.e. set up watches)."
+          (fn [_element k _v]
+            (if (s/starts-with? k "on")
+              :event
+              k)))
 
 (defmethod init-attr! :default [element k v]
   (-init-attr! v k element))
