@@ -136,24 +136,32 @@
   [parent]
   (flatten-child (.-__mistletoeChildArgs parent)))
 
+(defn- append-tail! [parent tail]
+  (run! (partial append-child! parent) tail))
+
+(defn- remove-tail! [parent tail-head]
+  (loop [old-child tail-head]
+    (when old-child
+      (let [next-old-child (.-nextSibling old-child)]
+        (remove-child! parent old-child)
+        (recur next-old-child)))))
+
 (defn- rearrange-children!
   "Rearrange the children of `parent` to match the current state of its watchees."
   [parent]
   (loop [new-children (flat-children parent)
          old-child (aget (.-childNodes parent) 0)]
     (if (seq new-children)
-      (let [[new-child & new-children] new-children]
-        (if old-child
-          (do (when-not (identical? new-child old-child)
-                (insert-before! parent new-child old-child))
-              (recur new-children (.-nextSibling old-child)))
-          ;; Append new children where no one has gone before:
-          (do (append-child! parent new-child)
-              (recur new-children old-child))))
+      (if old-child
+        (let [[new-child & new-children] new-children
+              next-old-child (if (identical? new-child old-child)
+                               (.-nextSibling old-child)
+                               (do (insert-before! parent new-child old-child)
+                                   old-child))]
+          (recur new-children next-old-child))
+        (append-tail! parent new-children))
       (when old-child
-        ;; Remove old children that are not needed any more.
-        (remove-child! parent old-child)
-        (recur new-children (.-nextSibling old-child))))))
+        (remove-tail! parent old-child)))))
 
 (defprotocol Child
   "Things that can be parented by DOM nodes."
