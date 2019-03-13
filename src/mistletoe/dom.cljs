@@ -224,6 +224,13 @@
 
 ;;;; # Attributes
 
+(defn set-attribute!
+  "Set attribute `k` of `element` to `v`. If `v` is nil uses Element.removeAttribute() instead."
+  [element k v]
+  (if (some? v)
+    (.setAttribute element k v)
+    (.removeAttribute element k)))
+
 (defprotocol AttributeValue
   (-init-attr! [self name element] "Set initial attribute value and eny other setup (i.e. set up watches),
                                    dispatching on the initial value.")
@@ -233,8 +240,8 @@
 (defn- -init-signal-attr!
   "Implementation of [[-init-attr!]] for signal attribute values."
   [sgn k element]
-  (.setAttribute element k @sgn)
-  (add-watchee element sgn (alloc-watch-key) (fn [_ _ _ v] (.setAttribute element k v))))
+  (set-attribute! element k @sgn)
+  (add-watchee element sgn (alloc-watch-key) (fn [_ _ _ v] (set-attribute! element k v))))
 
 (defn- -init-signal-style-attr!
   "Implementation of [[-init-style-attr!]] for signal attribute values."
@@ -244,7 +251,7 @@
 
 (extend-protocol AttributeValue
   default
-  (-init-attr! [v k element] (.setAttribute element k v))
+  (-init-attr! [v k element] (set-attribute! element k v))
   (-init-style-attr! [v k element] (obj/set (.-style element) k v))
 
   sgn/SourceSignal
