@@ -4,7 +4,7 @@ Deck of cards demo for Mistletoe
 
 ## Installation
 
-`lein cljsbuild once`
+`shadow-cljs compile app`
 
 ## Usage
 

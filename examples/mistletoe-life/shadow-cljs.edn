@@ -1,0 +1,6 @@
+{:source-paths ["src", "../../src"]
+ :dependencies []
+ :builds       {:app {:target     :browser
+                      :output-dir "resources/public/js"
+                      :asset-path "./"
+                      :modules    {:main {:init-fn mistletoe-life.core/main}}}}}

@@ -4,7 +4,7 @@ Conway's Game of Life demo for Mistletoe
 
 ## Installation
 
-`lein cljsbuild once`
+`shadow-cljs compile app`
 
 ## Usage
 
