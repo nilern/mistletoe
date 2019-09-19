@@ -280,7 +280,7 @@
   (.addEventListener element (subs k 2) f))
 
 (defmethod init-attr! "style" [element _ style-attrs]
-  (reduce-kv (fn [element k v] (-init-style-attr! v (name k) element)) element style-attrs))
+  (reduce-kv (fn [element k v] (-init-style-attr! v (name k) element) element) element style-attrs))
 
 ;;;; # Creating Reactive Elements
 
