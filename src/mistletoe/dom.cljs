@@ -133,7 +133,7 @@
 
   default
   (flatten-child [child]
-    (if (or (string? child) (not (seqable? child)))
+    (if (scalar? child)
       (list child)
       (mapcat flatten-child child))))
 
