@@ -13,3 +13,5 @@ pom.xml.asc
 /.idea
 *.iml
 .shadow-cljs
+/node_modules
+

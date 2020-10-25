@@ -123,7 +123,7 @@
     (when (empty? watches)
       ;; To avoid space leaks and 'unused' updates to `self` only start watching `dependencies`
       ;; when `self` gets its first watcher:
-      (reduce (fn [self dependency] (add-watch dependency self propagate)) self dependencies))
+      (reduce (fn [self dependency] (add-watch dependency self propagate) self) self dependencies))
     (set! watches (assoc watches k g)))
 
   (-remove-watch [self k]
@@ -131,7 +131,7 @@
     (when (empty? watches)
       ;; Watcher count just became zero, but watchees still have pointers to `self`.
       ;; Remove those to avoid space leaks and 'unused' updates to `self`:
-      (reduce (fn [self dependency] (remove-watch dependency self)) self dependencies))
+      (reduce (fn [self dependency] (remove-watch dependency self) self) self dependencies))
     nil))
 
 (defn smap*
