@@ -1,10 +1,12 @@
 (ns mistletoe.seqnal
   (:require [clojure.core.rrb-vector :as rrb]))
 
+;;; FIXME: `.-value`:s might be stale if dependencies were not being watched
+
 (defn- insert [coll i v]
   (if (= i (count coll))
     (conj coll v)
-    (rrb/catvec (rrb/subvec coll 0 i) [v] (rrb/subvec coll (inc i)))))
+    (rrb/catvec (rrb/subvec coll 0 i) [v] (rrb/subvec coll i))))
 
 (defn- rrb-dissoc [coll i]
   (rrb/catvec (rrb/subvec coll 0 i) (rrb/subvec coll (inc i))))
@@ -18,6 +20,7 @@
 (defprotocol SeqnalWatcher
   (on-insert [self i v])
   (on-assoc [self i v])
+  ; TODO: (on-move [self i i*])
   (on-dissoc [self i]))
 
 ;;;; # Imux
@@ -66,6 +69,8 @@
 
 (defn imux [signal] (ImuxSeqnal. signal {}))
 
+;;;; # Mux
+
 (defn- refresh-mux [mux-signal]
   (let [coll (.-value mux-signal)
         coll* @(.-seqnal mux-signal)]
@@ -105,17 +110,19 @@
 (defn- map-seqnal-watcher [map-seqnal f inputs]
   (reify SeqnalWatcher
     (on-insert [_ i v*]
-      (let [v* (apply f (map (comp #(nth % i) deref) inputs))]
+      (let [v* (apply f (map (comp #(nth % i) deref) inputs))
+            coll (.-coll map-seqnal)]
         (when-not (and (< i (count coll))
                        (= v* (get coll i)))
-          (set! (.-coll map-seqnal) (insert (.-coll map-seqnal) i v*))
+          (set! (.-coll map-seqnal) (insert coll i v*))
           (doseq [[_ w] (.-watchers map-seqnal)]
             (on-insert w i v*)))))
 
     (on-assoc [_ i v*]
-      (let [v* (apply f (map (comp #(nth % i) deref) inputs))]
+      (let [v* (apply f (map (comp #(nth % i) deref) inputs))
+            coll (.-coll map-seqnal)]
         (when-not (= v* (get coll i))
-          (set! (.-coll map-seqnal) (assoc (.-coll map-seqnal) i v*))
+          (set! (.-coll map-seqnal) (assoc coll i v*))
           (doseq [[_ w] (.-watchers map-seqnal)]
             (on-assoc w i v*)))))
 
@@ -143,4 +150,54 @@
 
 (defn smap-map [f & inputs]
   (MapSeqnal. f (apply (partial mapv f) (map deref inputs)) (vec inputs) {}))
+
+;;;; # Concat
+
+(defn- concat-seqnal-watcher [concat-seqnal input-index]
+  (reify SeqnalWatcher
+    (on-insert [_ i v*]
+      (let [i (+ (aget (.-pre-counts concat-seqnal) input-index) i)]
+        (set! (.-coll concat-seqnal) (insert (.-coll concat-seqnal) i v*))
+        (doseq [input-index (range (inc input-index) (count (.-inputs concat-seqnal)))]
+          (aset (.-pre-counts concat-seqnal) input-index
+                (inc (aget (.-pre-counts concat-seqnal) input-index))))
+        (doseq [[_ w] (.-watchers concat-seqnal)]
+          (on-insert w i v*))))
+
+    (on-assoc [_ i v*]
+      (let [i (+ (aget (.-pre-counts concat-seqnal) input-index) i)]
+        (set! (.-coll concat-seqnal) (assoc (.-coll concat-seqnal) i v*))
+        (doseq [[_ w] (.-watchers concat-seqnal)]
+          (on-assoc w i v*))))
+
+    (on-dissoc [_ i]
+      (let [i (+ (aget (.-pre-counts concat-seqnal) input-index) i)]
+        (set! (.-coll concat-seqnal) (rrb-dissoc (.-coll concat-seqnal) i))
+        (doseq [input-index (range (inc input-index) (count (.-inputs concat-seqnal)))]
+          (aset (.-pre-counts concat-seqnal) input-index
+                (dec (aget (.-pre-counts concat-seqnal) input-index))))
+        (doseq [[_ w] (.-watchers concat-seqnal)]
+          (on-dissoc w i))))))
+
+(deftype ConcatSeqnal [coll pre-counts inputs ^:mutable watchers]
+  IDeref
+  (-deref [_] coll)
+
+  Seqnal
+  (add-multi-watch [self k w]
+    (when (empty? watchers)
+      (doseq [[i input] (map-indexed vector inputs)]
+        (add-multi-watch input self (concat-seqnal-watcher self i))))
+    (set! watchers (assoc watchers k w)))
+
+  (remove-multi-watch [self k]
+    (set! watchers (dissoc watchers k))
+    (when (empty? watchers)
+      (doseq [input inputs]
+        (remove-multi-watch input self)))))
+
+(defn smap-concat [& inputs]
+  (ConcatSeqnal. (into [] (mapcat deref) inputs)
+                 (to-array (cons 0 (map (comp count deref) (butlast inputs))))
+                 (vec inputs) {}))
 

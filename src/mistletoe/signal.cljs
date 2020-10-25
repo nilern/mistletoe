@@ -109,7 +109,7 @@
 
 (deftype DerivedSignal [f, dependencies, ^:mutable value, equals?, ^:mutable watches, propagate]
   IDeref
-  (-deref [_] value)
+  (-deref [_] value) ; FIXME: if we were not watching `dependencies`, `value` might be stale
 
 
   IWatchable
