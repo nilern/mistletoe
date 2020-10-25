@@ -25,6 +25,7 @@
 
 ;;;; # Imux
 
+;; OPTIMIZE: Use linear time Levenstein or at least a better heuristic:
 (defn- imux-watcher [imux-seqnal]
   (fn [k signal coll coll*]
     (loop [i 0, [v :as coll] coll, [v* :as coll*] coll*]

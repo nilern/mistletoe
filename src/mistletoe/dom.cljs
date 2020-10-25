@@ -114,6 +114,8 @@
     (unmount! old-child)
     (mount! new-child)))
 
+;;; TODO: Utilize seqnals, `smap-concat` in particular could solve most of this:
+
 (defprotocol FlattenChild
   "Producing a flat sequence of child nodes."
   (flatten-child [child] "Flatten any sequences and deref any [[IDeref]]:s in `child`."))
