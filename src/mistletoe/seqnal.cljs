@@ -1,7 +1,5 @@
-(ns mistletoe.seqnal
+(ns mistletoe.seqnal ; OPTIMIZE
   (:require [clojure.core.rrb-vector :as rrb]))
-
-;;; FIXME: `.-value`:s might be stale if dependencies were not being watched
 
 (defn- insert [coll i v]
   (if (= i (count coll))
@@ -84,9 +82,12 @@
     (on-assoc [_ _ _] (refresh-mux mux-signal))
     (on-dissoc [_ _] (refresh-mux mux-signal))))
 
-(deftype MuxSignal [value seqnal ^:mutable watchers]
+(deftype MuxSignal [^:mutable value seqnal ^:mutable watchers]
   IDeref
-  (-deref [_] value)
+  (-deref [_]
+    (when (empty? watchers)
+      (set! value (vec @seqnal)))
+    value)
 
   IWatchable
   (-add-watch [self k f]
@@ -134,7 +135,10 @@
 
 (deftype MapSeqnal [f ^:mutable coll inputs ^:mutable watchers]
   IDeref
-  (-deref [_] coll)
+  (-deref [_]
+    (when (empty? watchers)
+      (set! coll (apply (partial mapv f) (map deref inputs))))
+    coll)
 
   Seqnal
   (add-multi-watch [self k w]
@@ -180,9 +184,14 @@
         (doseq [[_ w] (.-watchers concat-seqnal)]
           (on-dissoc w i))))))
 
-(deftype ConcatSeqnal [coll pre-counts inputs ^:mutable watchers]
+(deftype ConcatSeqnal [^:mutable coll pre-counts inputs ^:mutable watchers]
   IDeref
-  (-deref [_] coll)
+  (-deref [_]
+    (when (empty? watchers)
+      (set! coll (into [] (mapcat deref) inputs))
+      (doseq [[i c] (reductions + 0 (map (comp count deref) (butlast inputs)))]
+        (aset pre-counts i c)))
+    coll)
 
   Seqnal
   (add-multi-watch [self k w]
@@ -199,6 +208,6 @@
 
 (defn smap-concat [& inputs]
   (ConcatSeqnal. (into [] (mapcat deref) inputs)
-                 (to-array (cons 0 (map (comp count deref) (butlast inputs))))
+                 (to-array (reductions + 0 (map (comp count deref) (butlast inputs))))
                  (vec inputs) {}))
 

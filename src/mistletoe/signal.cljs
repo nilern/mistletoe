@@ -109,7 +109,10 @@
 
 (deftype DerivedSignal [f, dependencies, ^:mutable value, equals?, ^:mutable watches, propagate]
   IDeref
-  (-deref [_] value) ; FIXME: if we were not watching `dependencies`, `value` might be stale
+  (-deref [_]
+    (when (empty? watches)
+      (set! value (apply f (map deref dependencies)))) ; OPTIMIZE
+    value)
 
 
   IWatchable
