@@ -26,12 +26,13 @@
 
   (activate-watches [self]
     (reduce-kv (fn [_ watchee kfs]
-                 (reduce-kv add-watch watchee kfs))
+                 (reduce-kv (fn [watchee k f] (add-watch watchee k f) watchee)
+                            watchee kfs))
                nil (.-__mistletoeWatchees self)))
 
   (deactivate-watches [self]
     (reduce-kv (fn [_ watchee kfs]
-                 (reduce-kv (fn [watchee k _] (remove-watch watchee k))
+                 (reduce-kv (fn [watchee k _] (remove-watch watchee k) watchee)
                             watchee kfs))
                nil (.-__mistletoeWatchees self))))
 
@@ -282,7 +283,8 @@
   (.addEventListener element (subs k 2) f))
 
 (defmethod init-attr! "style" [element _ style-attrs]
-  (reduce-kv (fn [element k v] (-init-style-attr! v (name k) element) element) element style-attrs))
+  (reduce-kv (fn [element k v] (-init-style-attr! v (name k) element) element)
+             element style-attrs))
 
 ;;;; # Creating Reactive Elements
 

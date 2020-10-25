@@ -26,7 +26,7 @@
   IWatchable
   (-notify-watches [self old-val new-val]
     (when-not (equals? old-val new-val)                     ; This condition is why we don't just use cljs.core/Atom.
-      (reduce-kv (fn [self k f] (f k self old-val new-val)) self watches))
+      (reduce-kv (fn [self k f] (f k self old-val new-val) self) self watches))
     nil)
 
   (-add-watch [_ k f] (set! watches (assoc watches k f)))
@@ -116,7 +116,7 @@
   (-notify-watches [self old-val new-val]
     ;; TODO: DRY:
     (when-not (equals? old-val new-val)
-      (reduce-kv (fn [self k g] (g k self old-val new-val)) self watches))
+      (reduce-kv (fn [self k g] (g k self old-val new-val) self) self watches))
     nil)
 
   (-add-watch [self k g]
