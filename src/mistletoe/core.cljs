@@ -1,7 +1,7 @@
 (ns mistletoe.core
   (:require [mistletoe.signal :as sgn :refer [smap]]
             [mistletoe.signal.util :refer [map-index-cached]]
-            [mistletoe.seqnal :as sqn]
+            [mistletoe.vecnal :as sqn]
             [mistletoe.dom :refer [el append-child!]]))
 
 (def state (sgn/source ["Pine" "Birch" "Spruce"]))
