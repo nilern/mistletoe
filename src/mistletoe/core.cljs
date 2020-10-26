@@ -10,15 +10,15 @@
   (el :li
       (el :span name)
 
-      (el :input :type "text" :value name
+      (el :input :type "text" :value name ; FIXME: :value does not update on deletions
           :style {:background-color (smap #(if (empty? %) "red" "transparent") name)}
-          :onchange (fn [ev] (swap! state assoc i (.. ev -target -value))))
+          :onchange (fn [ev] (swap! state assoc @i (.. ev -target -value))))
 
       (el :input :type "button" :value "Delete"
           :onclick (fn [_]
                      (swap! state (fn [species]
-                                    (vec (lazy-cat (take i species)
-                                                   (drop (inc i) species)))))))))
+                                    (vec (lazy-cat (take @i species)
+                                                   (drop (inc @i) species)))))))))
 
 (defn- ui-root []
   (el :div
@@ -32,10 +32,9 @@
             state)
 
       (el :ul :style {:list-style-type "lower-greek"}
-          (->> state
-               (smap (partial map-indexed vector))
-               vcn/imux
-               (vcn/smap-map (fn [[i name]] (species-view i (sgn/pure name)))))) ; OPTIMIZE: map-index-cached style thing
+          (->> (vcn/imux state)
+               (vcn/smap-map vector (vcn/pure (range)))
+               (vcn/view (fn [i&name] (species-view (smap first i&name) (smap second i&name))))))
 
       (el :form
           :onsubmit (fn [ev]

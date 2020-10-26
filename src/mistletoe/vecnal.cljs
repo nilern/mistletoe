@@ -1,6 +1,6 @@
 (ns mistletoe.vecnal ; OPTIMIZE
   (:require [clojure.core.rrb-vector :as rrb]
-            [mistletoe.signal :refer [Signal]]))
+            [mistletoe.signal :as sgn :refer [Signal]]))
 
 (defn- insert [coll i v]
   (if (= i (count coll))
@@ -102,12 +102,6 @@
     (set! (.-value mux-signal) coll*)
     (-notify-watches mux-signal coll coll*)))
 
-(defn- mux-watcher [mux-signal]
-  (reify VecnalWatcher
-    (on-insert [_ _ _] (refresh-mux mux-signal))
-    (on-assoc [_ _ _] (refresh-mux mux-signal))
-    (on-dissoc [_ _] (refresh-mux mux-signal))))
-
 (deftype MuxSignal [^:mutable value vecnal ^:mutable watchers]
   Signal
   (signal? [_] true)
@@ -121,7 +115,7 @@
   IWatchable
   (-add-watch [self k f]
     (when (empty? watchers)
-      (add-multi-watch vecnal self (mux-watcher self)))
+      (add-multi-watch vecnal self self))
     (set! watchers (assoc watchers k f)))
 
   (-remove-watch [self k]
@@ -132,7 +126,12 @@
   (-notify-watches [self v v*]
     (when-not (= v v*)
       (doseq [[k f] watchers]
-        (f k self v v*)))))
+        (f k self v v*))))
+
+  VecnalWatcher
+  (on-insert [self _ _] (refresh-mux self))
+  (on-assoc [self _ _] (refresh-mux self))
+  (on-dissoc [self _] (refresh-mux self)))
 
 (defn mux [vecnal] (MuxSignal. (vec @vecnal) vecnal {}))
 
@@ -143,11 +142,9 @@
     (on-insert [_ i v*]
       (let [v* (apply f (map (comp #(nth % i) deref) inputs))
             coll (.-coll map-vecnal)]
-        (when-not (and (< i (count coll))
-                       (= v* (get coll i)))
-          (set! (.-coll map-vecnal) (insert coll i v*))
-          (doseq [[_ w] (.-watchers map-vecnal)]
-            (on-insert w i v*)))))
+        (set! (.-coll map-vecnal) (insert coll i v*))
+        (doseq [[_ w] (.-watchers map-vecnal)]
+          (on-insert w i v*))))
 
     (on-assoc [_ i v*]
       (let [v* (apply f (map (comp #(nth % i) deref) inputs))
@@ -245,3 +242,52 @@
   (ConcatVecnal. (into [] (mapcat deref) inputs)
                  (to-array (reductions + 0 (map (comp count deref) (butlast inputs))))
                  (vec inputs) {}))
+
+;;;; # View
+
+;;; TODO: Multiple inputs
+
+(deftype ViewVecnal [f ^:mutable coll ^:mutable wires input ^:mutable watchers]
+  Vecnal
+  (vecnal? [_] true)
+
+  IDeref
+  (-deref [_]
+    (when (empty? watchers)
+      (let [wires* (mapv sgn/source @input)]
+        (set! coll (mapv f wires*))
+        (set! wires wires*)))
+    coll)
+
+  MultiWatchable
+  (add-multi-watch [self k w]
+    (when (empty? watchers)
+      (add-multi-watch input self self))
+    (set! watchers (assoc watchers k w)))
+
+  (remove-multi-watch [self k]
+    (set! watchers (dissoc watchers k))
+    (when (empty? watchers)
+      (remove-multi-watch input self)))
+
+  VecnalWatcher
+  (on-insert [_ i v*]
+    (let [wire (sgn/source v*)
+          v* (f wire)]
+      (set! coll (insert coll i v*))
+      (set! wires (insert wires i wire))
+      (doseq [[k w] watchers]
+        (on-insert w i v*))))
+
+  (on-assoc [_ i v*] (reset! (get wires i) v*))
+
+  (on-dissoc [_ i]
+    (set! coll (rrb-dissoc coll i))
+    (set! wires (rrb-dissoc wires i))
+    (doseq [[_ w] watchers]
+      (on-dissoc w i))))
+
+(defn view [f input]
+  (let [wires (mapv sgn/source @input)]
+    (ViewVecnal. f (mapv f wires) wires input {})))
+
