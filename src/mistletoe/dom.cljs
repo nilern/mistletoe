@@ -2,6 +2,7 @@
   (:require [clojure.string :as s]
             [goog.object :as obj]
             [mistletoe.signal :as sgn]
+            [mistletoe.vecnal :as vcn]
             [mistletoe.signal.util :refer [alloc-watch-key]]))
 
 ;;;; # DOM Node Watch Lifecycle
@@ -11,6 +12,8 @@
   (add-watchee [self watchee k f] "Add a `watchee` with key `k` and callback `f` to `self`,
                                   but don't [[add-watch]] to `watchee` yet.")
   (remove-watchee [self watchee k] "Remove the `watchee` with key `k` from `self`.")
+  (add-multi-watchee [self watchee k w])
+  (remove-multi-watchee [self watchee k])
   (activate-watches [self] "Activate the watches in `self` (i.e. call [[add-watch]] for each of them).")
   (deactivate-watches [self] "Deactivate the watches in `self` (i.e. call [[remove-watch]] for each of them)."))
 
@@ -24,17 +27,33 @@
     (let [watchees (.-__mistletoeWatchees self)]
       (set! (.-__mistletoeWatchees self) (update watchees watchee dissoc k))))
 
+  (add-multi-watchee [self watchee k f]
+    (let [watchees (.-__mistletoeMultiWatchees self)]
+      (set! (.-__mistletoeMultiWatchees self) (update watchees watchee assoc k f))))
+
+  (remove-multi-watchee [self watchee k]
+    (let [watchees (.-__mistletoeMultiWatchees self)]
+      (set! (.-__mistletoeMultiWatchees self) (update watchees watchee dissoc k))))
+
   (activate-watches [self]
     (reduce-kv (fn [_ watchee kfs]
                  (reduce-kv (fn [watchee k f] (add-watch watchee k f) watchee)
                             watchee kfs))
-               nil (.-__mistletoeWatchees self)))
+               nil (.-__mistletoeWatchees self))
+    (reduce-kv (fn [_ watchee kfs]
+                 (reduce-kv (fn [watchee k f] (vcn/add-multi-watch watchee k f) watchee)
+                            watchee kfs))
+               nil (.-__mistletoeMultiWatchees self)))
 
   (deactivate-watches [self]
     (reduce-kv (fn [_ watchee kfs]
                  (reduce-kv (fn [watchee k _] (remove-watch watchee k) watchee)
                             watchee kfs))
-               nil (.-__mistletoeWatchees self))))
+               nil (.-__mistletoeWatchees self))
+    (reduce-kv (fn [_ watchee kfs]
+                 (reduce-kv (fn [watchee k _] (vcn/remove-multi-watch watchee k) watchee)
+                            watchee kfs))
+               nil (.-__mistletoeMultiWatchees self))))
 
 (defn- detached?
   "Is `dom` not mounted to the unmanaged DOM?"
@@ -82,8 +101,6 @@
 
 ;;;; # Children
 
-(defn- scalar? [v] (or (string? v) (not (seqable? v))))
-
 (defn insert-before!
   "A version of `Element/insertBefore` that also uses [[DOMMount]] appropriately."
   [parent child next-child]
@@ -115,115 +132,32 @@
     (unmount! old-child)
     (mount! new-child)))
 
-;;; TODO: Utilize seqnals, `smap-concat` in particular could solve most of this:
+(defn child->node [child]
+  (cond
+    (instance? js/Node child) child
+    (string? child) (.createTextNode js/document child)
+    :else (throw (ex-info "invalid mistletoe.dom child" child))))
 
-(defprotocol FlattenChild
-  "Producing a flat sequence of child nodes."
-  (flatten-child [child] "Flatten any sequences and deref any [[IDeref]]:s in `child`."))
+(defn child->vecnal [child]
+  (cond
+    (sgn/signal? child) (vcn/imux (sgn/smap #(list (child->node %)) child))
+    (vcn/vecnal? child) (vcn/smap-map child->node child)
+    (seqable? child) (vcn/pure (mapv child->node child))
+    :else (vcn/pure (vector (child->node child)))))
 
-(extend-protocol FlattenChild
-  sgn/SourceSignal
-  (flatten-child [child] (flatten-child @child))
-
-  sgn/ConstantSignal
-  (flatten-child [child] (flatten-child @child))
-
-  sgn/DerivedSignal
-  (flatten-child [child] (flatten-child @child))
-
-  default
-  (flatten-child [child]
-    (if (scalar? child)
-      (list child)
-      (mapcat flatten-child child))))
-
-;; OPTIMIZE: Probably allocates and thunkifies unnecessarily:
-(defn- flat-children
-  "Get the children of `parent` as a flat, signal-free sequence."
-  [parent]
-  (flatten-child (.-__mistletoeChildArgs parent)))
-
-(defn- append-tail! [parent tail]
-  (run! (partial append-child! parent) tail))
-
-(defn- remove-tail! [parent tail-head]
-  (loop [old-child tail-head]
-    (when old-child
-      (let [next-old-child (.-nextSibling old-child)]
-        (remove-child! parent old-child)
-        (recur next-old-child)))))
-
-(defn- rearrange-children!
-  "Rearrange the children of `parent` to match the current state of its watchees."
-  [parent]
-  (loop [new-children (flat-children parent)
-         old-child (aget (.-childNodes parent) 0)]
-    (if (seq new-children)
-      (if old-child
-        (let [[new-child & new-children] new-children
-              next-old-child (if (identical? new-child old-child)
-                               (.-nextSibling old-child)
-                               (do (insert-before! parent new-child old-child)
-                                   old-child))]
-          (recur new-children next-old-child))
-        (append-tail! parent new-children))
-      (when old-child
-        (remove-tail! parent old-child)))))
-
-(defprotocol Child
-  "Things that can be parented by DOM nodes."
-  (-init-child! [self parent] "Append `self` under `parent` and do any other required initialization
-                              (i.e. set up watches)."))
-
-(defn init-child!
-  "Append `child` under `parent` and do any other required initialization (i.e. set up watches)."
-  [element child]
-  (-init-child! child element))
-
-(defprotocol SignalChild
-  (-init-signal-child! [initial-value child parent] "Implementation of [[-init-child!]] for a signal child."))
-
-(extend-protocol SignalChild
-  js/Node
-  (-init-signal-child! [v sgn parent]
-    (let [child v]
-      (add-watchee parent sgn (alloc-watch-key)
-                   (fn [_ _ old-child new-child]
-                     (replace-child! parent new-child old-child)))
-      (append-child! parent child)))
-
-  default
-  (-init-signal-child! [v sgn parent]
-    (if (scalar? v)
-      (let [child (.createTextNode js/document (str v))]
-        (set! (.-__mistletoeDetached child) true)
-        (add-watchee child sgn (alloc-watch-key)
-                     (fn [_ _ _ v] (set! (.-nodeValue child) (str v))))
-        (append-child! parent child))
-
-      (do (add-watchee parent sgn (alloc-watch-key)
-                       ;; OPTIMIZE: Rearranges all children every time:
-                       (fn [_ _ _ _] (rearrange-children! parent)))
-          (run! (partial append-child! parent) v)))))
-
-(extend-protocol Child
-  js/Node
-  (-init-child! [child parent] (append-child! parent child))
-
-  sgn/SourceSignal
-  (-init-child! [child parent] (-init-signal-child! @child child parent))
-
-  sgn/ConstantSignal
-  (-init-child! [child parent] (-init-signal-child! @child child parent))
-
-  sgn/DerivedSignal
-  (-init-child! [child parent] (-init-signal-child! @child child parent))
-
-  default
-  (-init-child! [child parent]
-    (if (scalar? child)
-      (.appendChild parent (.createTextNode js/document (str child)))
-      (run! #(-init-child! % parent) child))))
+(defn init-children! [parent children]
+  (let [children (apply vcn/smap-concat (map child->vecnal children))]
+    (add-multi-watchee parent children (alloc-watch-key)
+                       (reify vcn/VecnalWatcher
+                         (on-insert [_ i child] (insert-before! parent child (aget (.-childNodes parent) i)))
+                         (on-assoc [_ i child] (replace-child! parent child (aget (.-childNodes parent) i)))
+                         (on-dissoc [_ i] (remove-child! parent (aget (.-childNodes parent) i)))))
+    (doseq [child @children]
+      (cond
+        (sgn/signal? child) (append-child! parent (child->node @child))
+        (vcn/vecnal? child) (run! #(append-child! parent (child->node %)) @child)
+        (seqable? child) (run! #(append-child! parent (child->node %)) child)
+        :else (append-child! parent (child->node child))))))
 
 ;;;; # Attributes
 
@@ -294,15 +228,13 @@
   (let [el (.createElement js/document (name tag))]
     (set! (.-__mistletoeDetached el) true)
     (loop [args args, child-args []]
-      (if-not (empty? args)
-        (let [[arg & args] args]
+      (when-not (empty? args)
+        (let [[arg & args*] args]
           (if (keyword? arg)
-            (if (empty? args)
+            (if (empty? args*)
               (throw (js/Error. (str "No value for attribute " arg)))
-              (let [[arg* & args] args]
+              (let [[arg* & args*] args*]
                 (init-attr! el (name arg) arg*)
-                (recur args child-args)))
-            (do (init-child! el arg)
-                (recur args (conj child-args arg)))))
-        (set! (.-__mistletoeChildArgs el) child-args)))
+                (recur args* child-args)))
+            (init-children! el args)))))
     el))

@@ -1,9 +1,20 @@
 (ns mistletoe.signal
   "The signal reference types.")
 
+(defprotocol Signal
+  (signal? [self]))
+
+(extend-protocol Signal
+  default
+  (signal? [_] false))
+
 ;;;; # Source
 
 (deftype SourceSignal [^:mutable value, equals?, ^:mutable watches]
+  Signal
+  (signal? [_] true)
+
+
   IDeref
   (-deref [_] value)
 
@@ -48,6 +59,10 @@
 ;;;; # Constant
 
 (deftype ConstantSignal [value]
+  Signal
+  (signal? [_] true)
+
+
   IDeref
   (-deref [_] value)
 
@@ -108,6 +123,10 @@
         (-notify-watches self old-val new-val)))))
 
 (deftype DerivedSignal [f, dependencies, ^:mutable value, equals?, ^:mutable watches, propagate]
+  Signal
+  (signal? [_] true)
+
+
   IDeref
   (-deref [_]
     (when (empty? watches)

@@ -1,5 +1,6 @@
 (ns mistletoe.vecnal ; OPTIMIZE
-  (:require [clojure.core.rrb-vector :as rrb]))
+  (:require [clojure.core.rrb-vector :as rrb]
+            [mistletoe.signal :refer [Signal]]))
 
 (defn- insert [coll i v]
   (if (= i (count coll))
@@ -9,9 +10,16 @@
 (defn- rrb-dissoc [coll i]
   (rrb/catvec (rrb/subvec coll 0 i) (rrb/subvec coll (inc i))))
 
-;;;; # Seqnal
+;;;; # Vecnal
 
 (defprotocol Vecnal
+  (vecnal? [self]))
+
+(extend-protocol Vecnal
+  default
+  (vecnal? [_] false))
+
+(defprotocol MultiWatchable
   (add-multi-watch [self k w])
   (remove-multi-watch [self k]))
 
@@ -24,10 +32,13 @@
 ;;;; # Constant
 
 (deftype ConstantVecnal [coll]
+  Vecnal
+  (vecnal? [_] true)
+
   IDeref
   (-deref [_] coll)
 
-  Vecnal
+  MultiWatchable
   (add-multi-watch [_ _ _] nil)
   (remove-multi-watch [_ _] nil))
 
@@ -51,10 +62,13 @@
           (recur (inc i) (rest coll) (rest coll*)))))))
 
 (deftype ImuxVecnal [signal ^:mutable watchers]
+  Vecnal
+  (vecnal? [_] true)
+
   IDeref
   (-deref [_] (-deref signal))
 
-  Vecnal
+  MultiWatchable
   (add-multi-watch [self k w]
     (when (empty? watchers)
       (add-watch signal self (imux-watcher self)))
@@ -95,6 +109,9 @@
     (on-dissoc [_ _] (refresh-mux mux-signal))))
 
 (deftype MuxSignal [^:mutable value vecnal ^:mutable watchers]
+  Signal
+  (signal? [_] true)
+
   IDeref
   (-deref [_]
     (when (empty? watchers)
@@ -145,14 +162,17 @@
       (doseq [[_ w] (.-watchers map-vecnal)]
         (on-dissoc w i)))))
 
-(deftype MapSeqnal [f ^:mutable coll inputs ^:mutable watchers]
+(deftype MapVecnal [f ^:mutable coll inputs ^:mutable watchers]
+  Vecnal
+  (vecnal? [_] true)
+
   IDeref
   (-deref [_]
     (when (empty? watchers)
       (set! coll (apply (partial mapv f) (map deref inputs))))
     coll)
 
-  Vecnal
+  MultiWatchable
   (add-multi-watch [self k w]
     (when (empty? watchers)
       (doseq [input inputs]
@@ -166,7 +186,7 @@
         (remove-multi-watch input self)))))
 
 (defn smap-map [f & inputs]
-  (MapSeqnal. f (apply (partial mapv f) (map deref inputs)) (vec inputs) {}))
+  (MapVecnal. f (apply (partial mapv f) (map deref inputs)) (vec inputs) {}))
 
 ;;;; # Concat
 
@@ -196,16 +216,19 @@
         (doseq [[_ w] (.-watchers concat-vecnal)]
           (on-dissoc w i))))))
 
-(deftype ConcatSeqnal [^:mutable coll pre-counts inputs ^:mutable watchers]
+(deftype ConcatVecnal [^:mutable coll pre-counts inputs ^:mutable watchers]
+  Vecnal
+  (vecnal? [_] true)
+
   IDeref
   (-deref [_]
     (when (empty? watchers)
       (set! coll (into [] (mapcat deref) inputs))
-      (doseq [[i c] (reductions + 0 (map (comp count deref) (butlast inputs)))]
+      (doseq [[i c] (map-indexed vector (reductions + 0 (map (comp count deref) (butlast inputs))))]
         (aset pre-counts i c)))
     coll)
 
-  Vecnal
+  MultiWatchable
   (add-multi-watch [self k w]
     (when (empty? watchers)
       (doseq [[i input] (map-indexed vector inputs)]
@@ -219,6 +242,6 @@
         (remove-multi-watch input self)))))
 
 (defn smap-concat [& inputs]
-  (ConcatSeqnal. (into [] (mapcat deref) inputs)
+  (ConcatVecnal. (into [] (mapcat deref) inputs)
                  (to-array (reductions + 0 (map (comp count deref) (butlast inputs))))
                  (vec inputs) {}))
