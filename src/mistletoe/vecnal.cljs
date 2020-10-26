@@ -21,6 +21,18 @@
   ; TODO: (on-move [self i i*])
   (on-dissoc [self i]))
 
+;;;; # Constant
+
+(deftype ConstantVecnal [coll]
+  IDeref
+  (-deref [_] coll)
+
+  Vecnal
+  (add-multi-watch [_ _ _] nil)
+  (remove-multi-watch [_ _] nil))
+
+(defn pure [coll] (ConstantVecnal. coll))
+
 ;;;; # Imux
 
 ;; OPTIMIZE: Use linear time Levenstein or at least a better heuristic:
