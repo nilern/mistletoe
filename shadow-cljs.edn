@@ -1,6 +1,0 @@
-{:source-paths ["src"]
- :dependencies [[org.clojure/core.rrb-vector "0.1.2"]]
- :builds       {:app {:target     :browser
-                      :output-dir "resources/public/js"
-                      :asset-path "."
-                      :modules    {:main {:init-fn mistletoe.core/main}}}}}
